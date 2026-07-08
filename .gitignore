@@ -1,0 +1,15 @@
+# Local scratch files
+work/
+outputs/
+.DS_Store
+
+# Dependencies and build artifacts
+node_modules/
+dist/
+build/
+release/
+
+# Environment files
+.env
+.env.*
+
