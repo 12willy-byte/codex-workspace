@@ -1,6 +1,7 @@
 # Local scratch files
 work/
 outputs/
+.ssh/
 .DS_Store
 
 # Dependencies and build artifacts
@@ -12,4 +13,3 @@ release/
 # Environment files
 .env
 .env.*
-
