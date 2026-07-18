@@ -36,6 +36,8 @@ class MultiCameraFusion:
                     camera_ids=tuple(sorted({item.camera_id for item in items})),
                     head_in_water_region=mean("head_in_water_region"),
                     water_relation_confidence=mean("water_relation_confidence"),
+                    wrist_motion=mean("wrist_motion"),
+                    wrist_motion_confidence=mean("wrist_motion_confidence"),
                 )
             )
         return tracks

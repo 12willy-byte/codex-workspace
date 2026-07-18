@@ -112,3 +112,36 @@ def test_missing_water_calibration_is_explicitly_unknown() -> None:
 
     assert observation.head_in_water_region == 0
     assert observation.water_relation_confidence == 0
+
+
+def test_pose_analyzer_emits_raw_wrist_motion_without_struggle_label() -> None:
+    pose_points = points(vertical=True)
+    result = FakeResult(FakeKeypoints(pose_points, [0.9] * 17))
+    detector = analyzer(result)
+    first = detector.analyze(VideoFrame("cam-a", 0, 1, "pixels"))[0]
+    moved = points(vertical=True)
+    moved[9], moved[10] = [40, 20], [40, 20]
+    result.keypoints = FakeKeypoints(moved, [0.9] * 17)
+
+    second = detector.analyze(VideoFrame("cam-a", 1, 2, "pixels"))[0]
+
+    assert first.wrist_motion_confidence == 0
+    assert second.wrist_motion == pytest.approx(0.2)
+    assert second.wrist_motion_confidence == 1
+    assert second.struggle == 0
+
+
+def test_wrist_history_resets_across_keypoint_occlusion() -> None:
+    result = FakeResult(FakeKeypoints(points(), [0.9] * 17))
+    detector = analyzer(result)
+    detector.analyze(VideoFrame("cam-a", 0, 1, "pixels"))
+    hidden_scores = [0.9] * 17
+    hidden_scores[9] = hidden_scores[10] = 0.1
+    result.keypoints = FakeKeypoints(points(), hidden_scores)
+    detector.analyze(VideoFrame("cam-a", 1, 2, "pixels"))
+    result.keypoints = FakeKeypoints(points(), [0.9] * 17)
+
+    observation = detector.analyze(VideoFrame("cam-a", 2, 3, "pixels"))[0]
+
+    assert observation.wrist_motion == 0
+    assert observation.wrist_motion_confidence == 0

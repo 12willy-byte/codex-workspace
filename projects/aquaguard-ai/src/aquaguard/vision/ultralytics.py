@@ -39,18 +39,24 @@ class UltralyticsTrackAnalyzer:
         *,
         confidence: float = 0.5,
         device: str | None = None,
+        track_ttl_seconds: float = 30,
         model_loader: Callable[[str], TrackModel] | None = None,
     ):
         if not 0 <= confidence <= 1:
             raise ValueError("confidence must be in [0, 1]")
         if model_loader is None and not Path(model_path).is_file():
             raise ValueError("Ultralytics model_path must reference an existing local file")
+        if track_ttl_seconds <= 0:
+            raise ValueError("track_ttl_seconds must be positive")
         self.model = (model_loader or _load_ultralytics)(model_path)
         self.confidence = confidence
         self.device = device
+        self.track_ttl_seconds = track_ttl_seconds
         self._anchors: dict[str, tuple[float, float]] = {}
+        self._last_seen: dict[str, float] = {}
 
     def analyze(self, frame: VideoFrame) -> list[PixelTrackObservation]:
+        self._prune(frame.timestamp)
         options = {
             "persist": True,
             "verbose": False,
@@ -82,6 +88,7 @@ class UltralyticsTrackAnalyzer:
                 if previous is not None:
                     motion = min(math.dist(previous, anchor) / height, 1.0)
                 self._anchors[local_track_id] = anchor
+                self._last_seen[local_track_id] = frame.timestamp
                 features = self._additional_features(
                     result, detection_index, local_track_id, height
                 )
@@ -98,6 +105,20 @@ class UltralyticsTrackAnalyzer:
                     )
                 )
         return observations
+
+    def _prune(self, now: float) -> None:
+        expired = [
+            track_id
+            for track_id, last_seen in self._last_seen.items()
+            if now - last_seen > self.track_ttl_seconds
+        ]
+        for track_id in expired:
+            self._anchors.pop(track_id, None)
+            self._last_seen.pop(track_id, None)
+            self._remove_track_state(track_id)
+
+    def _remove_track_state(self, local_track_id: str) -> None:
+        pass
 
     def _additional_features(
         self,
@@ -132,6 +153,7 @@ class UltralyticsPoseTrackAnalyzer(UltralyticsTrackAnalyzer):
         super().__init__(*args, **kwargs)
         self.keypoint_confidence = keypoint_confidence
         self.water_region = water_region
+        self._wrists: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {}
 
     def _additional_features(
         self,
@@ -165,11 +187,42 @@ class UltralyticsPoseTrackAnalyzer(UltralyticsTrackAnalyzer):
             dy = abs(hip[1] - shoulder[1])
             body_vertical = dy / max(dx + dy, 1e-9)
         water_features = self._water_features(points, visible)
+        wrist_features = self._wrist_features(
+            points, visible, local_track_id, body_height
+        )
         return {
             "body_vertical": body_vertical,
             "occlusion": 1.0 - visibility,
             **water_features,
+            **wrist_features,
         }
+
+    def _wrist_features(
+        self,
+        points: list[list[float]],
+        visible: list[bool],
+        local_track_id: str,
+        body_height: float,
+    ) -> dict[str, float]:
+        if not visible[9] or not visible[10]:
+            self._wrists.pop(local_track_id, None)
+            return {"wrist_motion": 0.0, "wrist_motion_confidence": 0.0}
+        current = (
+            (float(points[9][0]), float(points[9][1])),
+            (float(points[10][0]), float(points[10][1])),
+        )
+        previous = self._wrists.get(local_track_id)
+        self._wrists[local_track_id] = current
+        if previous is None:
+            return {"wrist_motion": 0.0, "wrist_motion_confidence": 0.0}
+        displacement = (math.dist(previous[0], current[0]) + math.dist(previous[1], current[1])) / 2
+        return {
+            "wrist_motion": min(displacement / max(body_height, 1.0), 1.0),
+            "wrist_motion_confidence": 1.0,
+        }
+
+    def _remove_track_state(self, local_track_id: str) -> None:
+        self._wrists.pop(local_track_id, None)
 
     def _water_features(
         self, points: list[list[float]], visible: list[bool]

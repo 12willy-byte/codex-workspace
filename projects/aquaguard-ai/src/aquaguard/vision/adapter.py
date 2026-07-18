@@ -50,6 +50,8 @@ class CalibratedObservationAdapter:
                     occlusion=item.occlusion,
                     head_in_water_region=item.head_in_water_region,
                     water_relation_confidence=item.water_relation_confidence,
+                    wrist_motion=item.wrist_motion,
+                    wrist_motion_confidence=item.wrist_motion_confidence,
                 )
             )
         return converted

@@ -27,6 +27,7 @@ class CameraRuntimeConfig(BaseModel):
     device: str | None = None
     keypoint_confidence: float = Field(default=0.3, ge=0, le=1)
     water_roi: tuple[tuple[float, float], ...] | None = None
+    track_ttl_seconds: float = Field(default=30, gt=0)
 
 
 class FrameAnalyzerFactory(Protocol):
@@ -51,7 +52,11 @@ class ConfiguredFrameAnalyzerFactory:
             if config.analyzer == "ultralytics_pose_tracking"
             else UltralyticsTrackAnalyzer
         )
-        options = {"confidence": config.confidence, "device": config.device}
+        options = {
+            "confidence": config.confidence,
+            "device": config.device,
+            "track_ttl_seconds": config.track_ttl_seconds,
+        }
         if analyzer_type is UltralyticsPoseTrackAnalyzer:
             options["keypoint_confidence"] = config.keypoint_confidence
             options["water_region"] = (

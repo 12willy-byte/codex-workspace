@@ -38,6 +38,8 @@ class WorldModelPipeline:
                         "occlusion": track.occlusion,
                         "head_in_water_region": track.head_in_water_region,
                         "water_relation_confidence": track.water_relation_confidence,
+                        "wrist_motion": track.wrist_motion,
+                        "wrist_motion_confidence": track.wrist_motion_confidence,
                     },
                     "forecast": forecast.to_dict(),
                     "decision": decision.to_dict(),

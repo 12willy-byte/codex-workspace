@@ -25,6 +25,8 @@
 
 可为每个 Pose 摄像头配置图像坐标 `water_roi` 多边形。系统只输出 `head_in_water_region` 和 `water_relation_confidence` 供审计；头部位于水域投影范围不代表已经沉水，因此不会自动改写 `head_submerged`。
 
+Pose 适配器还输出跨帧 `wrist_motion` 及其置信度；关键点遮挡会中断历史，快速腕动不会直接写成 `struggle`。离场轨迹状态按可配置 TTL 清理，避免长期运行内存无限增长。
+
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
 ## 快速运行

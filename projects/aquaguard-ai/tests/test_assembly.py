@@ -80,3 +80,10 @@ def test_tracking_analyzer_requires_local_model_path() -> None:
 
     with pytest.raises(ValueError, match="local model_path"):
         ConfiguredFrameAnalyzerFactory()(config)
+
+
+def test_track_ttl_must_be_positive() -> None:
+    with pytest.raises(ValidationError):
+        CameraRuntimeConfig(
+            camera_id="cam-a", source="0", homography=IDENTITY, track_ttl_seconds=0
+        )

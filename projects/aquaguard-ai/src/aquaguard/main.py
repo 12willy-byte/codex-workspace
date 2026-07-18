@@ -71,6 +71,8 @@ class ObservationRequest(BaseModel):
     occlusion: float = Field(default=0.0, ge=0, le=1)
     head_in_water_region: float = Field(default=0.0, ge=0, le=1)
     water_relation_confidence: float = Field(default=0.0, ge=0, le=1)
+    wrist_motion: float = Field(default=0.0, ge=0, le=1)
+    wrist_motion_confidence: float = Field(default=0.0, ge=0, le=1)
 
 
 class WorldFrameRequest(BaseModel):

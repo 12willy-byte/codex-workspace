@@ -74,3 +74,16 @@ def test_analyzer_estimates_normalized_anchor_motion() -> None:
 def test_analyzer_requires_existing_local_model_without_injected_loader(tmp_path) -> None:
     with pytest.raises(ValueError, match="existing local file"):
         UltralyticsTrackAnalyzer(str(tmp_path / "missing.pt"))
+
+
+def test_track_motion_history_expires_after_ttl() -> None:
+    model = FakeModel(FakeBoxes(track_ids=[7, 8]))
+    detector = UltralyticsTrackAnalyzer(
+        "fake.pt", model_loader=lambda _: model, track_ttl_seconds=5
+    )
+    detector.analyze(VideoFrame("cam-a", 0, 1, "pixels"))
+    model.boxes.xyxy = FakeTensor([[20, 20, 40, 60], [40, 10, 60, 50]])
+
+    observation = detector.analyze(VideoFrame("cam-a", 1, 7, "pixels"))[0]
+
+    assert observation.motion == 0
