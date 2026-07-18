@@ -14,6 +14,8 @@
 
 真实 RTSP、YOLO/Pose、持久化数据库与 IP 音箱驱动尚未接入；参见 [`docs/ROADMAP.md`](docs/ROADMAP.md)。
 
+项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
+
 ## 快速运行
 
 ```bash
