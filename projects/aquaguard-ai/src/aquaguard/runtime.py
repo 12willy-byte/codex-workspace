@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from threading import Event, Lock, Thread
 from typing import Protocol
 
 from aquaguard.video.models import FrameRead, VideoFrame
@@ -27,6 +28,12 @@ class RuntimeStep:
     result: dict | None = None
     error: str | None = None
     retry_at: float | None = None
+
+
+class ManagedVideoRuntime(Protocol):
+    def step(self) -> RuntimeStep: ...
+
+    def close(self) -> None: ...
 
 
 class VideoWorldRuntime:
@@ -58,3 +65,117 @@ class VideoWorldRuntime:
 
     def close(self) -> None:
         self.source.close()
+
+
+@dataclass(slots=True)
+class RuntimeCameraStatus:
+    camera_id: str
+    running: bool = False
+    frames_processed: int = 0
+    last_error: str | None = None
+    last_result: dict | None = None
+
+    def snapshot(self) -> dict:
+        return {
+            "camera_id": self.camera_id,
+            "running": self.running,
+            "frames_processed": self.frames_processed,
+            "last_error": self.last_error,
+            "last_result": self.last_result,
+        }
+
+
+class VideoRuntimeManager:
+    """Run camera pipelines independently so one failed stream cannot stop the others."""
+
+    def __init__(self, *, idle_wait_seconds: float = 0.05, join_timeout_seconds: float = 2):
+        if idle_wait_seconds < 0 or join_timeout_seconds < 0:
+            raise ValueError("Runtime wait durations must not be negative")
+        self.idle_wait_seconds = idle_wait_seconds
+        self.join_timeout_seconds = join_timeout_seconds
+        self._runtimes: dict[str, ManagedVideoRuntime] = {}
+        self._statuses: dict[str, RuntimeCameraStatus] = {}
+        self._threads: dict[str, Thread] = {}
+        self._stop = Event()
+        self._lock = Lock()
+        self._started = False
+
+    def add(self, camera_id: str, runtime: ManagedVideoRuntime) -> None:
+        if not camera_id:
+            raise ValueError("camera_id is required")
+        with self._lock:
+            if self._started:
+                raise RuntimeError("Cannot add a runtime after the manager has started")
+            if camera_id in self._runtimes:
+                raise ValueError(f"Runtime already exists for camera {camera_id}")
+            self._runtimes[camera_id] = runtime
+            self._statuses[camera_id] = RuntimeCameraStatus(camera_id)
+
+    def start(self) -> None:
+        with self._lock:
+            if self._started:
+                return
+            self._started = True
+            self._stop.clear()
+            for camera_id, runtime in self._runtimes.items():
+                status = self._statuses[camera_id]
+                status.running = True
+                thread = Thread(
+                    target=self._run,
+                    args=(camera_id, runtime),
+                    name=f"aquaguard-video-{camera_id}",
+                    daemon=True,
+                )
+                self._threads[camera_id] = thread
+                thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        with self._lock:
+            runtimes = tuple(self._runtimes.values())
+            threads = tuple(self._threads.items())
+        for runtime in runtimes:
+            runtime.close()
+        for _, thread in threads:
+            thread.join(self.join_timeout_seconds)
+        with self._lock:
+            alive_threads = {}
+            for camera_id, thread in threads:
+                if thread.is_alive():
+                    alive_threads[camera_id] = thread
+                    status = self._statuses[camera_id]
+                    status.running = True
+                    status.last_error = "shutdown_timeout"
+                else:
+                    self._statuses[camera_id].running = False
+            self._threads = alive_threads
+            self._started = bool(alive_threads)
+
+    def statuses(self) -> list[dict]:
+        with self._lock:
+            return [self._statuses[key].snapshot() for key in sorted(self._statuses)]
+
+    def _run(self, camera_id: str, runtime: ManagedVideoRuntime) -> None:
+        try:
+            while not self._stop.is_set():
+                step = runtime.step()
+                with self._lock:
+                    status = self._statuses[camera_id]
+                    if step.ok:
+                        status.frames_processed += 1
+                        status.last_result = step.result
+                        status.last_error = None
+                    else:
+                        status.last_error = step.error
+                if not step.ok and step.error == "end_of_stream":
+                    break
+                if not step.ok:
+                    self._stop.wait(self.idle_wait_seconds)
+        except Exception as exc:
+            if not self._stop.is_set():
+                with self._lock:
+                    self._statuses[camera_id].last_error = f"runtime_failure: {exc}"
+        finally:
+            runtime.close()
+            with self._lock:
+                self._statuses[camera_id].running = False

@@ -1,4 +1,8 @@
-from aquaguard.runtime import VideoWorldRuntime
+from threading import Event
+
+import pytest
+
+from aquaguard.runtime import RuntimeStep, VideoRuntimeManager, VideoWorldRuntime
 from aquaguard.evidence import EvidenceRecorder
 from aquaguard.video import OpenCVFrameSource, VideoFrame
 from aquaguard.vision import (
@@ -118,3 +122,91 @@ def test_runtime_connects_video_frame_to_world_model() -> None:
     assert step.ok is True
     assert step.result["tracks"][0]["position"] == {"x": 5.0, "y": 4.0}
     assert evidence.buffer.bounds("cam-a") == (0.0, 0.0)
+
+
+class ManagedRuntime:
+    def __init__(self, steps: list[RuntimeStep | Exception]) -> None:
+        self.steps = list(steps)
+        self.closed = False
+        self.called = Event()
+        self.terminal = Event()
+
+    def step(self) -> RuntimeStep:
+        item = self.steps.pop(0)
+        self.called.set()
+        if isinstance(item, Exception):
+            self.terminal.set()
+            raise item
+        if not item.ok and item.error == "end_of_stream":
+            self.terminal.set()
+        return item
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class BlockingRuntime:
+    def __init__(self) -> None:
+        self.entered = Event()
+        self.release = Event()
+
+    def step(self) -> RuntimeStep:
+        self.entered.set()
+        self.release.wait(2)
+        return RuntimeStep(False, error="end_of_stream")
+
+    def close(self) -> None:
+        pass
+
+
+def test_runtime_manager_isolates_camera_failures() -> None:
+    healthy = ManagedRuntime(
+        [RuntimeStep(True, result={"tracks": []}), RuntimeStep(False, error="end_of_stream")]
+    )
+    failed = ManagedRuntime([RuntimeError("decoder crashed")])
+    manager = VideoRuntimeManager(idle_wait_seconds=0, join_timeout_seconds=1)
+    manager.add("cam-healthy", healthy)
+    manager.add("cam-failed", failed)
+
+    manager.start()
+    assert healthy.called.wait(1)
+    assert failed.called.wait(1)
+    assert healthy.terminal.wait(1)
+    assert failed.terminal.wait(1)
+    manager.stop()
+    statuses = {item["camera_id"]: item for item in manager.statuses()}
+
+    assert statuses["cam-healthy"]["frames_processed"] == 1
+    assert statuses["cam-healthy"]["last_error"] == "end_of_stream"
+    assert statuses["cam-failed"]["last_error"] == "runtime_failure: decoder crashed"
+    assert all(item["running"] is False for item in statuses.values())
+    assert healthy.closed is True
+    assert failed.closed is True
+
+
+def test_runtime_manager_rejects_registration_after_start() -> None:
+    runtime = ManagedRuntime([RuntimeStep(False, error="end_of_stream")])
+    manager = VideoRuntimeManager()
+    manager.start()
+
+    try:
+        with pytest.raises(RuntimeError, match="after the manager has started"):
+            manager.add("cam-a", runtime)
+    finally:
+        manager.stop()
+
+
+def test_runtime_manager_reports_shutdown_timeout_truthfully() -> None:
+    runtime = BlockingRuntime()
+    manager = VideoRuntimeManager(join_timeout_seconds=0)
+    manager.add("cam-blocked", runtime)
+    manager.start()
+    assert runtime.entered.wait(1)
+
+    manager.stop()
+
+    assert manager.statuses()[0]["running"] is True
+    assert manager.statuses()[0]["last_error"] == "shutdown_timeout"
+    runtime.release.set()
+    manager.join_timeout_seconds = 1
+    manager.stop()

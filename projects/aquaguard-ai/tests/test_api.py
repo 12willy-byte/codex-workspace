@@ -11,6 +11,12 @@ def test_health() -> None:
     assert response.json()["status"] == "ok"
 
 
+def test_video_runtime_status_api() -> None:
+    response = client.get("/api/v1/video-runtimes")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_evaluation_validation() -> None:
     response = client.post("/api/v1/evaluations", json={"camera_id": "C01", "track_id": "T01", "area": "child-pool", "features": {"head_underwater": 2, "vertical_body": 0, "abnormal_motion": 0, "temporal_risk": 0}})
     assert response.status_code == 422

@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -6,12 +8,13 @@ from aquaguard.config import get_settings
 from aquaguard.domain import EventStatus, RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
 from aquaguard.risk import RiskEngine
+from aquaguard.runtime import VideoRuntimeManager
 from aquaguard.service import EventService
 from aquaguard.world import CameraObservation, WorldModelPipeline
 
 settings = get_settings()
-app = FastAPI(title="AquaGuard AI", version=__version__)
 world_model = WorldModelPipeline()
+video_manager = VideoRuntimeManager()
 evidence_service = EventEvidenceService(
     EvidenceRecorder(), FileEvidenceRepository(settings.evidence_directory)
 )
@@ -23,6 +26,18 @@ service = EventService(
     evidence_pre_seconds=settings.evidence_pre_seconds,
     evidence_post_seconds=settings.evidence_post_seconds,
 )
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    video_manager.start()
+    try:
+        yield
+    finally:
+        video_manager.stop()
+
+
+app = FastAPI(title="AquaGuard AI", version=__version__, lifespan=lifespan)
 
 
 class EvaluationRequest(BaseModel):
@@ -58,6 +73,11 @@ class WorldFrameRequest(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/api/v1/video-runtimes")
+def video_runtime_statuses() -> list[dict]:
+    return video_manager.statuses()
 
 
 @app.post("/api/v1/evaluations")
