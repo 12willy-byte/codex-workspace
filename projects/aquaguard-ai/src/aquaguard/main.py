@@ -10,13 +10,19 @@ from aquaguard.service import EventService
 from aquaguard.world import CameraObservation, WorldModelPipeline
 
 settings = get_settings()
-service = EventService(RiskEngine(settings.risk_threshold, settings.confirmation_frames), settings.alarm_cooldown_seconds)
 app = FastAPI(title="AquaGuard AI", version=__version__)
 world_model = WorldModelPipeline()
 evidence_service = EventEvidenceService(
     EvidenceRecorder(), FileEvidenceRepository(settings.evidence_directory)
 )
 evidence_service.recover()
+service = EventService(
+    RiskEngine(settings.risk_threshold, settings.confirmation_frames),
+    settings.alarm_cooldown_seconds,
+    evidence=evidence_service,
+    evidence_pre_seconds=settings.evidence_pre_seconds,
+    evidence_post_seconds=settings.evidence_post_seconds,
+)
 
 
 class EvaluationRequest(BaseModel):
@@ -24,6 +30,7 @@ class EvaluationRequest(BaseModel):
     track_id: str
     area: str
     features: RiskFeatures
+    observed_at: float | None = Field(default=None, ge=0)
 
 
 class StatusRequest(BaseModel):
@@ -55,7 +62,13 @@ def health() -> dict[str, str]:
 
 @app.post("/api/v1/evaluations")
 def evaluate(request: EvaluationRequest) -> dict:
-    assessment, event = service.evaluate(request.camera_id, request.track_id, request.area, request.features)
+    assessment, event = service.evaluate(
+        request.camera_id,
+        request.track_id,
+        request.area,
+        request.features,
+        observed_at=request.observed_at,
+    )
     return {"assessment": assessment, "event": event}
 
 

@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     risk_threshold: float = Field(default=80, ge=0, le=100)
     confirmation_frames: int = Field(default=3, ge=1, le=300)
     alarm_cooldown_seconds: float = Field(default=10, ge=0)
+    evidence_pre_seconds: float = Field(default=30, ge=0)
+    evidence_post_seconds: float = Field(default=60, ge=0)
     database_url: str = "sqlite:///./aquaguard.db"
     evidence_directory: Path = Path("./data/evidence")
 

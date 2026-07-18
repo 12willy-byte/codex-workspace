@@ -1,7 +1,6 @@
 from fastapi.testclient import TestClient
 
-from aquaguard.main import app
-from aquaguard.main import evidence_service
+from aquaguard.main import app, evidence_service, service
 
 client = TestClient(app)
 
@@ -52,3 +51,35 @@ def test_evidence_status_api_reports_pending_and_missing() -> None:
     assert response.json()["status"] == "pending"
     assert response.json()["starts_at"] == 8
     assert missing.status_code == 404
+
+
+def test_confirmed_evaluation_opens_evidence_window() -> None:
+    service.engine._consecutive.clear()
+    service.events.clear()
+    service._last_alarm.clear()
+    evidence_service.recorder.pending.clear()
+    evidence_service.recorder.completed.clear()
+    track_id = "api-evidence-track"
+    payload = {
+        "camera_id": "C01",
+        "track_id": track_id,
+        "area": "child-pool",
+        "observed_at": 100,
+        "features": {
+            "head_underwater": 1,
+            "vertical_body": 1,
+            "abnormal_motion": 1,
+            "temporal_risk": 1,
+        },
+    }
+
+    responses = [client.post("/api/v1/evaluations", json=payload) for _ in range(3)]
+    event = responses[-1].json()["event"]
+    evidence = client.get(f"/api/v1/events/{event['id']}/evidence")
+
+    assert all(response.status_code == 200 for response in responses)
+    assert event is not None
+    assert evidence.status_code == 200
+    assert evidence.json()["status"] == "pending"
+    assert evidence.json()["starts_at"] == 70
+    assert evidence.json()["ends_at"] == 160
