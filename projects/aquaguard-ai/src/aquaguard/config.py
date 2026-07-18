@@ -4,6 +4,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from aquaguard.assembly import CameraRuntimeConfig
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AQUAGUARD_", env_file=".env")
@@ -16,6 +18,7 @@ class Settings(BaseSettings):
     evidence_post_seconds: float = Field(default=60, ge=0)
     database_url: str = "sqlite:///./aquaguard.db"
     evidence_directory: Path = Path("./data/evidence")
+    cameras: tuple[CameraRuntimeConfig, ...] = ()
 
 
 @lru_cache

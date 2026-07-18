@@ -4,21 +4,26 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from aquaguard import __version__
+from aquaguard.assembly import UnavailableFrameAnalyzerFactory, VideoRuntimeAssembler
 from aquaguard.config import get_settings
 from aquaguard.domain import EventStatus, RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
 from aquaguard.risk import RiskEngine
 from aquaguard.runtime import VideoRuntimeManager
 from aquaguard.service import EventService
-from aquaguard.world import CameraObservation, WorldModelPipeline
+from aquaguard.world import CameraObservation, TemporalFusionCoordinator, WorldModelPipeline
 
 settings = get_settings()
 world_model = WorldModelPipeline()
-video_manager = VideoRuntimeManager()
 evidence_service = EventEvidenceService(
     EvidenceRecorder(), FileEvidenceRepository(settings.evidence_directory)
 )
 evidence_service.recover()
+video_manager: VideoRuntimeManager = VideoRuntimeAssembler(
+    UnavailableFrameAnalyzerFactory(),
+    TemporalFusionCoordinator(world_model),
+    evidence_service.recorder,
+).build(settings.cameras)
 service = EventService(
     RiskEngine(settings.risk_threshold, settings.confirmation_frames),
     settings.alarm_cooldown_seconds,
