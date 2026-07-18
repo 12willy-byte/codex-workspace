@@ -17,6 +17,10 @@ class FrameAnalyzer(Protocol):
     def analyze(self, frame: VideoFrame) -> list[PixelTrackObservation]: ...
 
 
+class FrameObserver(Protocol):
+    def ingest(self, frame: VideoFrame) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimeStep:
     ok: bool
@@ -34,16 +38,20 @@ class VideoWorldRuntime:
         analyzer: FrameAnalyzer,
         adapter: CalibratedObservationAdapter,
         pipeline: WorldModelPipeline,
+        observers: tuple[FrameObserver, ...] = (),
     ):
         self.source = source
         self.analyzer = analyzer
         self.adapter = adapter
         self.pipeline = pipeline
+        self.observers = observers
 
     def step(self) -> RuntimeStep:
         read = self.source.read()
         if not read.ok or read.frame is None:
             return RuntimeStep(False, error=read.error, retry_at=read.retry_at)
+        for observer in self.observers:
+            observer.ingest(read.frame)
         pixels = self.analyzer.analyze(read.frame)
         observations = self.adapter.convert(pixels)
         return RuntimeStep(True, result=self.pipeline.process(observations))

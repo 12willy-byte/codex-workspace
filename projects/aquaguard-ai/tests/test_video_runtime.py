@@ -1,4 +1,5 @@
 from aquaguard.runtime import VideoWorldRuntime
+from aquaguard.evidence import EvidenceRecorder
 from aquaguard.video import OpenCVFrameSource, VideoFrame
 from aquaguard.vision import (
     CalibratedObservationAdapter,
@@ -103,6 +104,7 @@ def test_runtime_connects_video_frame_to_world_model() -> None:
             )
         ]
 
+    evidence = EvidenceRecorder()
     runtime = VideoWorldRuntime(
         source,
         ScriptedFrameAnalyzer(analyze),
@@ -110,7 +112,9 @@ def test_runtime_connects_video_frame_to_world_model() -> None:
             {"cam-a": HomographyProjector("cam-a", (0.1, 0, 0, 0, 0.1, 0, 0, 0, 1))}
         ),
         WorldModelPipeline(),
+        observers=(evidence,),
     )
     step = runtime.step()
     assert step.ok is True
     assert step.result["tracks"][0]["position"] == {"x": 5.0, "y": 4.0}
+    assert evidence.buffer.bounds("cam-a") == (0.0, 0.0)
