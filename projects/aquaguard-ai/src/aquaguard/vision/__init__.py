@@ -3,7 +3,7 @@ from aquaguard.vision.calibration import HomographyProjector
 from aquaguard.vision.models import PixelTrackObservation
 from aquaguard.vision.replay import ObservationReplay
 from aquaguard.vision.scripted import ScriptedFrameAnalyzer
-from aquaguard.vision.ultralytics import UltralyticsTrackAnalyzer
+from aquaguard.vision.ultralytics import UltralyticsPoseTrackAnalyzer, UltralyticsTrackAnalyzer
 
 __all__ = [
     "CalibratedObservationAdapter",
@@ -13,4 +13,5 @@ __all__ = [
     "ProvidedTrackAssociator",
     "ScriptedFrameAnalyzer",
     "UltralyticsTrackAnalyzer",
+    "UltralyticsPoseTrackAnalyzer",
 ]

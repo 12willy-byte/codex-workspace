@@ -8,7 +8,10 @@ from aquaguard.runtime import FrameAnalyzer, VideoRuntimeManager, VideoWorldRunt
 from aquaguard.video.source import CaptureFactory, OpenCVFrameSource
 from aquaguard.vision.adapter import CalibratedObservationAdapter
 from aquaguard.vision.calibration import HomographyProjector
-from aquaguard.vision.ultralytics import UltralyticsTrackAnalyzer
+from aquaguard.vision.ultralytics import (
+    UltralyticsPoseTrackAnalyzer,
+    UltralyticsTrackAnalyzer,
+)
 
 
 class CameraRuntimeConfig(BaseModel):
@@ -17,10 +20,11 @@ class CameraRuntimeConfig(BaseModel):
     homography: tuple[float, float, float, float, float, float, float, float, float]
     enabled: bool = False
     reconnect: bool = True
-    analyzer: Literal["none", "ultralytics_tracking"] = "none"
+    analyzer: Literal["none", "ultralytics_tracking", "ultralytics_pose_tracking"] = "none"
     model_path: str | None = None
     confidence: float = Field(default=0.5, ge=0, le=1)
     device: str | None = None
+    keypoint_confidence: float = Field(default=0.3, ge=0, le=1)
 
 
 class FrameAnalyzerFactory(Protocol):
@@ -40,11 +44,15 @@ class ConfiguredFrameAnalyzerFactory:
             return UnavailableFrameAnalyzerFactory()(config)
         if not config.model_path:
             raise ValueError(f"Camera {config.camera_id} requires a local model_path")
-        return UltralyticsTrackAnalyzer(
-            config.model_path,
-            confidence=config.confidence,
-            device=config.device,
+        analyzer_type = (
+            UltralyticsPoseTrackAnalyzer
+            if config.analyzer == "ultralytics_pose_tracking"
+            else UltralyticsTrackAnalyzer
         )
+        options = {"confidence": config.confidence, "device": config.device}
+        if analyzer_type is UltralyticsPoseTrackAnalyzer:
+            options["keypoint_confidence"] = config.keypoint_confidence
+        return analyzer_type(config.model_path, **options)
 
 
 class VideoRuntimeAssembler:

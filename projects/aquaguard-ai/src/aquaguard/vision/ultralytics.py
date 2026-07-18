@@ -68,9 +68,8 @@ class UltralyticsTrackAnalyzer:
             confidences = _list(boxes.conf)
             track_ids = _list(boxes.id)
             classes = _list(boxes.cls)
-            for xyxy, score, track_id, class_id in zip(
-                coordinates, confidences, track_ids, classes, strict=True
-            ):
+            detections = zip(coordinates, confidences, track_ids, classes, strict=True)
+            for detection_index, (xyxy, score, track_id, class_id) in enumerate(detections):
                 if int(class_id) != 0:
                     continue
                 x1, y1, x2, y2 = (float(value) for value in xyxy)
@@ -82,6 +81,9 @@ class UltralyticsTrackAnalyzer:
                 if previous is not None:
                     motion = min(math.dist(previous, anchor) / height, 1.0)
                 self._anchors[local_track_id] = anchor
+                features = self._additional_features(
+                    result, detection_index, local_track_id, height
+                )
                 observations.append(
                     PixelTrackObservation(
                         camera_id=frame.camera_id,
@@ -91,6 +93,74 @@ class UltralyticsTrackAnalyzer:
                         anchor_y=anchor[1],
                         confidence=float(score),
                         motion=motion,
+                        **features,
                     )
                 )
         return observations
+
+    def _additional_features(
+        self,
+        result: object,
+        detection_index: int,
+        local_track_id: str,
+        body_height: float,
+    ) -> dict[str, float]:
+        return {}
+
+
+class UltralyticsPoseTrackAnalyzer(UltralyticsTrackAnalyzer):
+    """Pose tracking adapter; head-submersion and struggle remain intentionally unset."""
+
+    capabilities = (
+        "person_detection",
+        "local_tracking",
+        "anchor_motion",
+        "body_verticality",
+        "pose_visibility",
+    )
+
+    def __init__(self, *args, keypoint_confidence: float = 0.3, **kwargs):
+        if not 0 <= keypoint_confidence <= 1:
+            raise ValueError("keypoint_confidence must be in [0, 1]")
+        super().__init__(*args, **kwargs)
+        self.keypoint_confidence = keypoint_confidence
+
+    def _additional_features(
+        self,
+        result: object,
+        detection_index: int,
+        local_track_id: str,
+        body_height: float,
+    ) -> dict[str, float]:
+        keypoints = getattr(result, "keypoints", None)
+        if keypoints is None or getattr(keypoints, "xy", None) is None:
+            raise RuntimeError("Pose analyzer received tracked boxes without pose keypoints")
+        coordinates = _list(keypoints.xy)
+        confidence_value = getattr(keypoints, "conf", None)
+        if confidence_value is None:
+            raise RuntimeError("Pose analyzer requires keypoint confidence values")
+        confidences = _list(confidence_value)
+        if detection_index >= len(coordinates) or detection_index >= len(confidences):
+            raise RuntimeError("Pose keypoints are not aligned with tracked boxes")
+        points = coordinates[detection_index]
+        scores = confidences[detection_index]
+        if len(points) < 17 or len(scores) < 17:
+            raise RuntimeError("Pose analyzer requires the 17-keypoint COCO layout")
+        visible = [float(score) >= self.keypoint_confidence for score in scores[:17]]
+        visibility = sum(visible) / 17
+        body_vertical = 0.0
+        torso_indices = (5, 6, 11, 12)
+        if all(visible[index] for index in torso_indices):
+            shoulder = self._midpoint(points[5], points[6])
+            hip = self._midpoint(points[11], points[12])
+            dx = abs(hip[0] - shoulder[0])
+            dy = abs(hip[1] - shoulder[1])
+            body_vertical = dy / max(dx + dy, 1e-9)
+        return {"body_vertical": body_vertical, "occlusion": 1.0 - visibility}
+
+    @staticmethod
+    def _midpoint(first: list[float], second: list[float]) -> tuple[float, float]:
+        return (
+            (float(first[0]) + float(second[0])) / 2,
+            (float(first[1]) + float(second[1])) / 2,
+        )
