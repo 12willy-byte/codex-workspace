@@ -34,6 +34,8 @@ class MultiCameraFusion:
                     motion=mean("motion"),
                     occlusion=mean("occlusion"),
                     camera_ids=tuple(sorted({item.camera_id for item in items})),
+                    head_in_water_region=mean("head_in_water_region"),
+                    water_relation_confidence=mean("water_relation_confidence"),
                 )
             )
         return tracks

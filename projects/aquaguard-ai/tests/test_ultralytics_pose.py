@@ -1,7 +1,7 @@
 import pytest
 
 from aquaguard.video import VideoFrame
-from aquaguard.vision import UltralyticsPoseTrackAnalyzer
+from aquaguard.vision import PolygonRegion, UltralyticsPoseTrackAnalyzer
 
 
 class FakeTensor:
@@ -50,9 +50,11 @@ def points(vertical: bool = True) -> list[list[float]]:
     return values
 
 
-def analyzer(result: FakeResult) -> UltralyticsPoseTrackAnalyzer:
+def analyzer(
+    result: FakeResult, water_region: PolygonRegion | None = None
+) -> UltralyticsPoseTrackAnalyzer:
     return UltralyticsPoseTrackAnalyzer(
-        "fake-pose.pt", model_loader=lambda _: FakeModel(result)
+        "fake-pose.pt", model_loader=lambda _: FakeModel(result), water_region=water_region
     )
 
 
@@ -90,3 +92,23 @@ def test_low_confidence_torso_does_not_create_vertical_signal() -> None:
 def test_pose_analyzer_fails_when_tracked_boxes_have_no_keypoints() -> None:
     with pytest.raises(RuntimeError, match="without pose keypoints"):
         analyzer(FakeResult(None)).analyze(VideoFrame("cam-a", 0, 1, "pixels"))
+
+
+def test_pose_analyzer_reports_head_relation_to_calibrated_water_region() -> None:
+    result = FakeResult(FakeKeypoints(points(vertical=True), [0.9] * 17))
+    region = PolygonRegion(((0, 0), (40, 0), (40, 40), (0, 40)))
+
+    observation = analyzer(result, region).analyze(VideoFrame("cam-a", 0, 1, "pixels"))[0]
+
+    assert observation.head_in_water_region == 1
+    assert observation.water_relation_confidence == 1
+    assert observation.head_submerged == 0
+
+
+def test_missing_water_calibration_is_explicitly_unknown() -> None:
+    result = FakeResult(FakeKeypoints(points(vertical=True), [0.9] * 17))
+
+    observation = analyzer(result).analyze(VideoFrame("cam-a", 0, 1, "pixels"))[0]
+
+    assert observation.head_in_water_region == 0
+    assert observation.water_relation_confidence == 0

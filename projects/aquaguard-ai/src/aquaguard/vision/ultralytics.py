@@ -5,6 +5,7 @@ from typing import Protocol
 
 from aquaguard.video.models import VideoFrame
 from aquaguard.vision.models import PixelTrackObservation
+from aquaguard.vision.regions import PolygonRegion
 
 
 class TrackModel(Protocol):
@@ -119,11 +120,18 @@ class UltralyticsPoseTrackAnalyzer(UltralyticsTrackAnalyzer):
         "pose_visibility",
     )
 
-    def __init__(self, *args, keypoint_confidence: float = 0.3, **kwargs):
+    def __init__(
+        self,
+        *args,
+        keypoint_confidence: float = 0.3,
+        water_region: PolygonRegion | None = None,
+        **kwargs,
+    ):
         if not 0 <= keypoint_confidence <= 1:
             raise ValueError("keypoint_confidence must be in [0, 1]")
         super().__init__(*args, **kwargs)
         self.keypoint_confidence = keypoint_confidence
+        self.water_region = water_region
 
     def _additional_features(
         self,
@@ -156,7 +164,27 @@ class UltralyticsPoseTrackAnalyzer(UltralyticsTrackAnalyzer):
             dx = abs(hip[0] - shoulder[0])
             dy = abs(hip[1] - shoulder[1])
             body_vertical = dy / max(dx + dy, 1e-9)
-        return {"body_vertical": body_vertical, "occlusion": 1.0 - visibility}
+        water_features = self._water_features(points, visible)
+        return {
+            "body_vertical": body_vertical,
+            "occlusion": 1.0 - visibility,
+            **water_features,
+        }
+
+    def _water_features(
+        self, points: list[list[float]], visible: list[bool]
+    ) -> dict[str, float]:
+        if self.water_region is None:
+            return {"head_in_water_region": 0.0, "water_relation_confidence": 0.0}
+        head_indices = [index for index in range(5) if visible[index]]
+        if not head_indices:
+            return {"head_in_water_region": 0.0, "water_relation_confidence": 0.0}
+        head_x = sum(float(points[index][0]) for index in head_indices) / len(head_indices)
+        head_y = sum(float(points[index][1]) for index in head_indices) / len(head_indices)
+        return {
+            "head_in_water_region": float(self.water_region.contains(head_x, head_y)),
+            "water_relation_confidence": len(head_indices) / 5,
+        }
 
     @staticmethod
     def _midpoint(first: list[float], second: list[float]) -> tuple[float, float]:

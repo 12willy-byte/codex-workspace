@@ -17,6 +17,8 @@ class PixelTrackObservation:
     struggle: float = 0.0
     motion: float = 0.0
     occlusion: float = 0.0
+    head_in_water_region: float = 0.0
+    water_relation_confidence: float = 0.0
 
     def validate(self) -> None:
         if not self.camera_id or not self.local_track_id:
@@ -28,6 +30,8 @@ class PixelTrackObservation:
             "struggle",
             "motion",
             "occlusion",
+            "head_in_water_region",
+            "water_relation_confidence",
         ):
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1]")

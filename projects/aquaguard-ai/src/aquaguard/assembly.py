@@ -8,6 +8,7 @@ from aquaguard.runtime import FrameAnalyzer, VideoRuntimeManager, VideoWorldRunt
 from aquaguard.video.source import CaptureFactory, OpenCVFrameSource
 from aquaguard.vision.adapter import CalibratedObservationAdapter
 from aquaguard.vision.calibration import HomographyProjector
+from aquaguard.vision.regions import PolygonRegion
 from aquaguard.vision.ultralytics import (
     UltralyticsPoseTrackAnalyzer,
     UltralyticsTrackAnalyzer,
@@ -25,6 +26,7 @@ class CameraRuntimeConfig(BaseModel):
     confidence: float = Field(default=0.5, ge=0, le=1)
     device: str | None = None
     keypoint_confidence: float = Field(default=0.3, ge=0, le=1)
+    water_roi: tuple[tuple[float, float], ...] | None = None
 
 
 class FrameAnalyzerFactory(Protocol):
@@ -52,6 +54,9 @@ class ConfiguredFrameAnalyzerFactory:
         options = {"confidence": config.confidence, "device": config.device}
         if analyzer_type is UltralyticsPoseTrackAnalyzer:
             options["keypoint_confidence"] = config.keypoint_confidence
+            options["water_region"] = (
+                PolygonRegion(config.water_roi) if config.water_roi is not None else None
+            )
         return analyzer_type(config.model_path, **options)
 
 

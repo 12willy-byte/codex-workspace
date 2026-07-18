@@ -29,6 +29,16 @@ class WorldModelPipeline:
                     "track_id": track.track_id,
                     "camera_ids": track.camera_ids,
                     "position": {"x": track.pool_x, "y": track.pool_y},
+                    "features": {
+                        "confidence": track.confidence,
+                        "head_submerged": track.head_submerged,
+                        "body_vertical": track.body_vertical,
+                        "struggle": track.struggle,
+                        "motion": track.motion,
+                        "occlusion": track.occlusion,
+                        "head_in_water_region": track.head_in_water_region,
+                        "water_relation_confidence": track.water_relation_confidence,
+                    },
                     "forecast": forecast.to_dict(),
                     "decision": decision.to_dict(),
                 }

@@ -26,6 +26,8 @@ class CameraObservation:
     struggle: float = 0.0
     motion: float = 0.0
     occlusion: float = 0.0
+    head_in_water_region: float = 0.0
+    water_relation_confidence: float = 0.0
 
     def validate(self, geometry: PoolGeometry) -> None:
         if not self.camera_id or not self.track_id:
@@ -39,6 +41,8 @@ class CameraObservation:
             "struggle",
             "motion",
             "occlusion",
+            "head_in_water_region",
+            "water_relation_confidence",
         )
         for name in features:
             if not 0.0 <= getattr(self, name) <= 1.0:
@@ -58,6 +62,8 @@ class FusedTrack:
     motion: float
     occlusion: float
     camera_ids: tuple[str, ...]
+    head_in_water_region: float = 0.0
+    water_relation_confidence: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

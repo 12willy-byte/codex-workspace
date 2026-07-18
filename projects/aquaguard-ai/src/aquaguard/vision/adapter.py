@@ -48,6 +48,8 @@ class CalibratedObservationAdapter:
                     struggle=item.struggle,
                     motion=item.motion,
                     occlusion=item.occlusion,
+                    head_in_water_region=item.head_in_water_region,
+                    water_relation_confidence=item.water_relation_confidence,
                 )
             )
         return converted

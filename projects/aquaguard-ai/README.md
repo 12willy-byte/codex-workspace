@@ -23,6 +23,8 @@
 
 `ultralytics_pose_tracking` 会在同一个跟踪结果中关联 COCO 17 点 Pose，额外输出躯干垂直度和关键点遮挡程度。它仍不会在没有水域标定时推断头部入水，也不会把手腕运动直接等同于挣扎。
 
+可为每个 Pose 摄像头配置图像坐标 `water_roi` 多边形。系统只输出 `head_in_water_region` 和 `water_relation_confidence` 供审计；头部位于水域投影范围不代表已经沉水，因此不会自动改写 `head_submerged`。
+
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
 ## 快速运行

@@ -3,7 +3,15 @@ import pytest
 from aquaguard.world import CameraObservation, PoolGeometry, WorldModelPipeline
 
 
-def observation(camera: str, timestamp: float, *, danger: float, occlusion: float = 0.0):
+def observation(
+    camera: str,
+    timestamp: float,
+    *,
+    danger: float,
+    occlusion: float = 0.0,
+    head_in_water_region: float = 0.0,
+    water_relation_confidence: float = 0.0,
+):
     return CameraObservation(
         camera_id=camera,
         track_id="person-1",
@@ -16,6 +24,8 @@ def observation(camera: str, timestamp: float, *, danger: float, occlusion: floa
         struggle=danger,
         motion=1.0 - danger,
         occlusion=occlusion,
+        head_in_water_region=head_in_water_region,
+        water_relation_confidence=water_relation_confidence,
     )
 
 
@@ -27,6 +37,25 @@ def test_multicamera_fusion_populates_one_bev_track() -> None:
     assert len(result["tracks"]) == 1
     assert result["tracks"][0]["camera_ids"] == ("cam-a", "cam-b")
     assert sum(sum(row) for row in result["bev"]["occupancy"]) == pytest.approx(0.9)
+
+
+def test_world_output_exposes_auditable_water_relation_without_submersion_claim() -> None:
+    result = WorldModelPipeline().process(
+        [
+            observation(
+                "cam-a",
+                1,
+                danger=0,
+                head_in_water_region=1,
+                water_relation_confidence=0.8,
+            )
+        ]
+    )
+
+    features = result["tracks"][0]["features"]
+    assert features["head_in_water_region"] == 1
+    assert features["water_relation_confidence"] == 0.8
+    assert features["head_submerged"] == 0
 
 
 def test_future_risk_and_supervisor_escalate_continuous_danger() -> None:
