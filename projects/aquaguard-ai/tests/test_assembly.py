@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from aquaguard.assembly import (
     CameraRuntimeConfig,
+    ConfiguredFrameAnalyzerFactory,
     UnavailableFrameAnalyzerFactory,
     VideoRuntimeAssembler,
 )
@@ -66,3 +67,16 @@ def test_duplicate_camera_configuration_is_rejected() -> None:
 def test_homography_requires_exactly_nine_values() -> None:
     with pytest.raises(ValidationError):
         CameraRuntimeConfig(camera_id="cam-a", source="0", homography=(1.0, 2.0))
+
+
+def test_tracking_analyzer_requires_local_model_path() -> None:
+    config = CameraRuntimeConfig(
+        camera_id="cam-a",
+        source="0",
+        homography=IDENTITY,
+        enabled=True,
+        analyzer="ultralytics_tracking",
+    )
+
+    with pytest.raises(ValueError, match="local model_path"):
+        ConfiguredFrameAnalyzerFactory()(config)

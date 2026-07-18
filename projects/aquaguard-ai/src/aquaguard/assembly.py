@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -8,6 +8,7 @@ from aquaguard.runtime import FrameAnalyzer, VideoRuntimeManager, VideoWorldRunt
 from aquaguard.video.source import CaptureFactory, OpenCVFrameSource
 from aquaguard.vision.adapter import CalibratedObservationAdapter
 from aquaguard.vision.calibration import HomographyProjector
+from aquaguard.vision.ultralytics import UltralyticsTrackAnalyzer
 
 
 class CameraRuntimeConfig(BaseModel):
@@ -16,6 +17,10 @@ class CameraRuntimeConfig(BaseModel):
     homography: tuple[float, float, float, float, float, float, float, float, float]
     enabled: bool = False
     reconnect: bool = True
+    analyzer: Literal["none", "ultralytics_tracking"] = "none"
+    model_path: str | None = None
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    device: str | None = None
 
 
 class FrameAnalyzerFactory(Protocol):
@@ -26,6 +31,19 @@ class UnavailableFrameAnalyzerFactory:
     def __call__(self, config: CameraRuntimeConfig) -> FrameAnalyzer:
         raise RuntimeError(
             f"Camera {config.camera_id} is enabled but no production frame analyzer is configured"
+        )
+
+
+class ConfiguredFrameAnalyzerFactory:
+    def __call__(self, config: CameraRuntimeConfig) -> FrameAnalyzer:
+        if config.analyzer == "none":
+            return UnavailableFrameAnalyzerFactory()(config)
+        if not config.model_path:
+            raise ValueError(f"Camera {config.camera_id} requires a local model_path")
+        return UltralyticsTrackAnalyzer(
+            config.model_path,
+            confidence=config.confidence,
+            device=config.device,
         )
 
 
