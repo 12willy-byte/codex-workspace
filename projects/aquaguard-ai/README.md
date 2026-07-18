@@ -27,6 +27,8 @@
 
 Pose 适配器还输出跨帧 `wrist_motion` 及其置信度；关键点遮挡会中断历史，快速腕动不会直接写成 `struggle`。离场轨迹状态按可配置 TTL 清理，避免长期运行内存无限增长。
 
+运行状态 API 会分别报告 `tracking_only`、`pose_baseline` 或未来的 `validated_assistive_alerting`。视频线程处于运行状态不代表已具备防溺水报警能力。
+
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
 ## 快速运行

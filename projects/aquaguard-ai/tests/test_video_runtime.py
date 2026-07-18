@@ -210,3 +210,15 @@ def test_runtime_manager_reports_shutdown_timeout_truthfully() -> None:
     runtime.release.set()
     manager.join_timeout_seconds = 1
     manager.stop()
+
+
+def test_runtime_status_never_equates_thread_health_with_protection_capability() -> None:
+    runtime = ManagedRuntime([RuntimeStep(False, error="end_of_stream")])
+    runtime.capabilities = ("person_detection", "local_tracking")
+    manager = VideoRuntimeManager()
+    manager.add("cam-a", runtime)
+
+    status = manager.statuses()[0]
+
+    assert status["protection_level"] == "tracking_only"
+    assert status["capabilities"] == ("person_detection", "local_tracking")

@@ -61,6 +61,7 @@ class VideoWorldRuntime:
         self.adapter = adapter
         self.pipeline = pipeline
         self.observers = observers
+        self.capabilities = tuple(getattr(analyzer, "capabilities", ()))
 
     def step(self) -> RuntimeStep:
         read = self.source.read()
@@ -84,6 +85,8 @@ class VideoWorldRuntime:
 @dataclass(slots=True)
 class RuntimeCameraStatus:
     camera_id: str
+    capabilities: tuple[str, ...] = ()
+    protection_level: str = "unconfigured"
     running: bool = False
     frames_processed: int = 0
     last_error: str | None = None
@@ -92,6 +95,8 @@ class RuntimeCameraStatus:
     def snapshot(self) -> dict:
         return {
             "camera_id": self.camera_id,
+            "capabilities": self.capabilities,
+            "protection_level": self.protection_level,
             "running": self.running,
             "frames_processed": self.frames_processed,
             "last_error": self.last_error,
@@ -123,7 +128,12 @@ class VideoRuntimeManager:
             if camera_id in self._runtimes:
                 raise ValueError(f"Runtime already exists for camera {camera_id}")
             self._runtimes[camera_id] = runtime
-            self._statuses[camera_id] = RuntimeCameraStatus(camera_id)
+            capabilities = tuple(getattr(runtime, "capabilities", ()))
+            self._statuses[camera_id] = RuntimeCameraStatus(
+                camera_id,
+                capabilities=capabilities,
+                protection_level=self._protection_level(capabilities),
+            )
 
     def start(self) -> None:
         with self._lock:
@@ -193,3 +203,14 @@ class VideoRuntimeManager:
             runtime.close()
             with self._lock:
                 self._statuses[camera_id].running = False
+
+    @staticmethod
+    def _protection_level(capabilities: tuple[str, ...]) -> str:
+        available = set(capabilities)
+        if "drowning_risk_validated" in available:
+            return "validated_assistive_alerting"
+        if "body_verticality" in available:
+            return "pose_baseline"
+        if "person_detection" in available:
+            return "tracking_only"
+        return "unconfigured"

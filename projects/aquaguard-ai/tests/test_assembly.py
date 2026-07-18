@@ -55,6 +55,7 @@ def test_enabled_camera_is_registered_with_explicit_analyzer() -> None:
     manager = assembler(factory).build((config,))
 
     assert manager.statuses()[0]["camera_id"] == "cam-a"
+    assert manager.statuses()[0]["protection_level"] == "unconfigured"
 
 
 def test_duplicate_camera_configuration_is_rejected() -> None:
