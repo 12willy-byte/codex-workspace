@@ -1,8 +1,10 @@
 import hashlib
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 from typing import Protocol
 
 from aquaguard.evidence.models import EvidenceClip
@@ -24,6 +26,8 @@ class StoredEvidence:
     media_type: str
     frame_count: int
     complete: bool
+    stored_at: float
+    size_bytes: int
 
 
 class JsonEvidenceManifestEncoder:
@@ -60,9 +64,15 @@ class JsonEvidenceManifestEncoder:
 
 
 class FileEvidenceRepository:
-    def __init__(self, root: Path, encoder: EvidenceEncoder | None = None):
+    def __init__(
+        self,
+        root: Path,
+        encoder: EvidenceEncoder | None = None,
+        clock: Callable[[], float] = time.time,
+    ):
         self.root = root
         self.encoder = encoder or JsonEvidenceManifestEncoder()
+        self.clock = clock
 
     def persist(self, clip: EvidenceClip) -> StoredEvidence:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -88,6 +98,8 @@ class FileEvidenceRepository:
             self.encoder.media_type,
             len(clip.frames),
             clip.complete,
+            self.clock(),
+            destination.stat().st_size + checksum_path.stat().st_size,
         )
 
     def verify(self, stored: StoredEvidence) -> bool:
@@ -95,6 +107,15 @@ class FileEvidenceRepository:
             return False
         expected = stored.checksum_path.read_text(encoding="ascii").split(maxsplit=1)[0]
         return expected == stored.sha256 == self._digest(stored.path)
+
+    def delete(self, stored: StoredEvidence) -> bool:
+        """Delete only the exact artifact and checksum registered in StoredEvidence."""
+        if stored.path.parent != self.root or stored.checksum_path.parent != self.root:
+            raise ValueError("Evidence artifact is outside the repository root")
+        existed = stored.path.exists() or stored.checksum_path.exists()
+        stored.path.unlink(missing_ok=True)
+        stored.checksum_path.unlink(missing_ok=True)
+        return existed
 
     @staticmethod
     def _digest(path: Path) -> str:
