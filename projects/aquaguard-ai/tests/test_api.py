@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from aquaguard.main import app
+from aquaguard.main import evidence_service
 
 client = TestClient(app)
 
@@ -36,3 +37,18 @@ def test_world_model_api() -> None:
     assert response.status_code == 200
     assert response.json()["tracks"][0]["track_id"] == "T01"
     assert "occupancy" in response.json()["bev"]
+
+
+def test_evidence_status_api_reports_pending_and_missing() -> None:
+    evidence_service.recorder.pending.clear()
+    evidence_service.recorder.completed.clear()
+    evidence_service.artifacts.clear()
+    evidence_service.recorder.request("event-pending", "C01", 10, pre_seconds=2, post_seconds=3)
+
+    response = client.get("/api/v1/events/event-pending/evidence")
+    missing = client.get("/api/v1/events/unknown/evidence")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "pending"
+    assert response.json()["starts_at"] == 8
+    assert missing.status_code == 404

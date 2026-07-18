@@ -5,6 +5,7 @@ from aquaguard.evidence.recorder import EvidenceRecorder
 from aquaguard.evidence.retention import CleanupPlan, EvidenceRetentionPolicy
 from aquaguard.evidence.service import EventEvidenceService
 from aquaguard.evidence.storage import (
+    EvidenceRecovery,
     FileEvidenceRepository,
     JsonEvidenceManifestEncoder,
     StoredEvidence,
@@ -16,6 +17,7 @@ __all__ = [
     "EvidenceRecorder",
     "EvidenceWindow",
     "EvidenceRetentionPolicy",
+    "EvidenceRecovery",
     "EventEvidenceService",
     "FileEvidenceRepository",
     "FrameRingBuffer",

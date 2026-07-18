@@ -33,6 +33,7 @@ def test_repository_persists_manifest_and_verifies_integrity(tmp_path) -> None:
     assert artifact.path.parent == tmp_path
     assert artifact.path.name.startswith(".") is False
     assert artifact.media_type == "application/json"
+    assert artifact.metadata_path.is_file()
     assert service.repository.verify(artifact) is True
     manifest = json.loads(artifact.path.read_text(encoding="utf-8"))
     assert manifest["event_id"] == str(event.id)
@@ -48,6 +49,78 @@ def test_repository_detects_tampering(tmp_path) -> None:
     artifact = service.persist_ready(5)[0]
     artifact.path.write_text("tampered", encoding="utf-8")
     assert service.repository.verify(artifact) is False
+
+
+def test_service_recovers_persisted_evidence_after_restart(tmp_path) -> None:
+    recorder = EvidenceRecorder()
+    event = alarm_event()
+    repository = FileEvidenceRepository(tmp_path, clock=lambda: 12.5)
+    service = EventEvidenceService(recorder, repository)
+    recorder.ingest(VideoFrame("cam-a", 0, 5, "pixels"))
+    service.request(event, 5, pre_seconds=0, post_seconds=0)
+    original = service.persist_ready(5)[0]
+
+    restarted = EventEvidenceService(EvidenceRecorder(), FileEvidenceRepository(tmp_path))
+    recovered = restarted.recover()
+
+    assert recovered == (original,)
+    assert restarted.status(str(event.id)) == {
+        "event_id": str(event.id),
+        "status": "stored",
+        "media_type": "application/json",
+        "frame_count": 1,
+        "complete": True,
+        "stored_at": 12.5,
+        "size_bytes": original.size_bytes,
+        "integrity": "verified",
+    }
+
+
+def test_recovery_rejects_tampered_and_unsafe_metadata(tmp_path) -> None:
+    recorder = EvidenceRecorder()
+    repository = FileEvidenceRepository(tmp_path)
+    recorder.ingest(VideoFrame("cam-a", 0, 5, "pixels"))
+    recorder.request("event-1", "cam-a", 5, pre_seconds=0, post_seconds=0)
+    artifact = repository.persist(recorder.finalize_ready(5)[0])
+    artifact.path.write_text("tampered", encoding="utf-8")
+    unsafe = tmp_path / "unsafe.evidence.json"
+    unsafe.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "event_id": "unsafe",
+                "artifact_name": "../outside",
+                "checksum_name": "outside.sha256",
+                "sha256": "bad",
+                "media_type": "application/json",
+                "frame_count": 1,
+                "complete": True,
+                "stored_at": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    recovery = repository.recover()
+
+    assert recovery.artifacts == ()
+    assert len(recovery.rejected_metadata) == 2
+
+
+def test_recovery_rejects_metadata_that_claims_another_event(tmp_path) -> None:
+    recorder = EvidenceRecorder()
+    repository = FileEvidenceRepository(tmp_path)
+    recorder.ingest(VideoFrame("cam-a", 0, 5, "pixels"))
+    recorder.request("event-1", "cam-a", 5, pre_seconds=0, post_seconds=0)
+    artifact = repository.persist(recorder.finalize_ready(5)[0])
+    metadata = json.loads(artifact.metadata_path.read_text(encoding="utf-8"))
+    metadata["event_id"] = "event-2"
+    artifact.metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    recovery = repository.recover()
+
+    assert recovery.artifacts == ()
+    assert "does not match event id" in recovery.rejected_metadata[0]
 
 
 def test_event_id_cannot_escape_storage_directory(tmp_path) -> None:
@@ -92,15 +165,16 @@ def test_repository_refuses_to_delete_paths_outside_root(tmp_path) -> None:
     service.request(event, 5, pre_seconds=0, post_seconds=0)
     artifact = service.persist_ready(5)[0]
     unsafe = artifact.__class__(
-        artifact.event_id,
-        tmp_path.parent / artifact.path.name,
-        artifact.checksum_path,
-        artifact.sha256,
-        artifact.media_type,
-        artifact.frame_count,
-        artifact.complete,
-        artifact.stored_at,
-        artifact.size_bytes,
+        event_id=artifact.event_id,
+        path=tmp_path.parent / artifact.path.name,
+        checksum_path=artifact.checksum_path,
+        sha256=artifact.sha256,
+        media_type=artifact.media_type,
+        frame_count=artifact.frame_count,
+        complete=artifact.complete,
+        stored_at=artifact.stored_at,
+        size_bytes=artifact.size_bytes,
+        metadata_path=artifact.metadata_path,
     )
     with pytest.raises(ValueError, match="outside"):
         repository.delete(unsafe)

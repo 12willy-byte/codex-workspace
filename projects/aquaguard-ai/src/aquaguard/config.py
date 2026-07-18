@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,6 +13,7 @@ class Settings(BaseSettings):
     confirmation_frames: int = Field(default=3, ge=1, le=300)
     alarm_cooldown_seconds: float = Field(default=10, ge=0)
     database_url: str = "sqlite:///./aquaguard.db"
+    evidence_directory: Path = Path("./data/evidence")
 
 
 @lru_cache

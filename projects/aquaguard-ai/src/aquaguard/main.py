@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from aquaguard import __version__
 from aquaguard.config import get_settings
 from aquaguard.domain import EventStatus, RiskFeatures
+from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
 from aquaguard.risk import RiskEngine
 from aquaguard.service import EventService
 from aquaguard.world import CameraObservation, WorldModelPipeline
@@ -12,6 +13,10 @@ settings = get_settings()
 service = EventService(RiskEngine(settings.risk_threshold, settings.confirmation_frames), settings.alarm_cooldown_seconds)
 app = FastAPI(title="AquaGuard AI", version=__version__)
 world_model = WorldModelPipeline()
+evidence_service = EventEvidenceService(
+    EvidenceRecorder(), FileEvidenceRepository(settings.evidence_directory)
+)
+evidence_service.recover()
 
 
 class EvaluationRequest(BaseModel):
@@ -65,6 +70,14 @@ def update_event(event_id: str, request: StatusRequest):
     if event is None:
         raise HTTPException(status_code=404, detail="event not found")
     return event
+
+
+@app.get("/api/v1/events/{event_id}/evidence")
+def evidence_status(event_id: str) -> dict:
+    status = evidence_service.status(event_id)
+    if status["status"] == "missing":
+        raise HTTPException(status_code=404, detail="evidence not found")
+    return status
 
 
 @app.post("/api/v1/world-model/frames")

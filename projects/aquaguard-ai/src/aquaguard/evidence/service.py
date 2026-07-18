@@ -12,6 +12,37 @@ class EventEvidenceService:
         self.recorder = recorder
         self.repository = repository
         self.artifacts: dict[str, StoredEvidence] = {}
+        self.recovery_errors: tuple[str, ...] = ()
+
+    def recover(self) -> tuple[StoredEvidence, ...]:
+        recovery = self.repository.recover()
+        self.artifacts = {artifact.event_id: artifact for artifact in recovery.artifacts}
+        self.recovery_errors = recovery.rejected_metadata
+        return recovery.artifacts
+
+    def status(self, event_id: str) -> dict:
+        artifact = self.artifacts.get(event_id)
+        if artifact is not None:
+            return {
+                "event_id": event_id,
+                "status": "stored",
+                "media_type": artifact.media_type,
+                "frame_count": artifact.frame_count,
+                "complete": artifact.complete,
+                "stored_at": artifact.stored_at,
+                "size_bytes": artifact.size_bytes,
+                "integrity": "verified" if self.repository.verify(artifact) else "failed",
+            }
+        window = self.recorder.pending.get(event_id)
+        if window is not None:
+            return {
+                "event_id": event_id,
+                "status": "pending",
+                "camera_id": window.camera_id,
+                "starts_at": window.starts_at,
+                "ends_at": window.ends_at,
+            }
+        return {"event_id": event_id, "status": "missing"}
 
     def request(
         self,
