@@ -68,7 +68,7 @@ class FileEvidenceRepository:
         self.root.mkdir(parents=True, exist_ok=True)
         stem = hashlib.sha256(clip.event_id.encode()).hexdigest()[:24]
         destination = self.root / f"{stem}{self.encoder.extension}"
-        temporary = self.root / f".{stem}{self.encoder.extension}.tmp"
+        temporary = self.root / f".{stem}.tmp{self.encoder.extension}"
         checksum_path = destination.with_suffix(destination.suffix + ".sha256")
         temporary_checksum = checksum_path.with_suffix(checksum_path.suffix + ".tmp")
         try:
