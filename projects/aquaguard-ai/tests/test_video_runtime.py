@@ -11,7 +11,7 @@ from aquaguard.vision import (
     PixelTrackObservation,
     ScriptedFrameAnalyzer,
 )
-from aquaguard.world import WorldModelPipeline
+from aquaguard.world import TemporalFusionCoordinator, WorldModelPipeline
 
 
 class FakeClock:
@@ -115,7 +115,7 @@ def test_runtime_connects_video_frame_to_world_model() -> None:
         CalibratedObservationAdapter(
             {"cam-a": HomographyProjector("cam-a", (0.1, 0, 0, 0, 0.1, 0, 0, 0, 1))}
         ),
-        WorldModelPipeline(),
+        TemporalFusionCoordinator(WorldModelPipeline()),
         observers=(evidence,),
     )
     step = runtime.step()

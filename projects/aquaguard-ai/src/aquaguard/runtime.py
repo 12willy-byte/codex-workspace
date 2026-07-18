@@ -5,7 +5,7 @@ from typing import Protocol
 from aquaguard.video.models import FrameRead, VideoFrame
 from aquaguard.vision.adapter import CalibratedObservationAdapter
 from aquaguard.vision.models import PixelTrackObservation
-from aquaguard.world.pipeline import WorldModelPipeline
+from aquaguard.world.models import CameraObservation
 
 
 class VideoSource(Protocol):
@@ -36,6 +36,15 @@ class ManagedVideoRuntime(Protocol):
     def close(self) -> None: ...
 
 
+class WorldFrameProcessor(Protocol):
+    def process_frame(
+        self,
+        camera_id: str,
+        timestamp: float,
+        observations: list[CameraObservation],
+    ) -> dict: ...
+
+
 class VideoWorldRuntime:
     """One-step orchestration from video capture to the pool world model."""
 
@@ -44,7 +53,7 @@ class VideoWorldRuntime:
         source: VideoSource,
         analyzer: FrameAnalyzer,
         adapter: CalibratedObservationAdapter,
-        pipeline: WorldModelPipeline,
+        pipeline: WorldFrameProcessor,
         observers: tuple[FrameObserver, ...] = (),
     ):
         self.source = source
@@ -61,7 +70,12 @@ class VideoWorldRuntime:
             observer.ingest(read.frame)
         pixels = self.analyzer.analyze(read.frame)
         observations = self.adapter.convert(pixels)
-        return RuntimeStep(True, result=self.pipeline.process(observations))
+        return RuntimeStep(
+            True,
+            result=self.pipeline.process_frame(
+                read.frame.camera_id, read.frame.timestamp, observations
+            ),
+        )
 
     def close(self) -> None:
         self.source.close()
