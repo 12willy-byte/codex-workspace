@@ -1,4 +1,15 @@
 from aquaguard.vision.adapter import CalibratedObservationAdapter, ProvidedTrackAssociator
+from aquaguard.vision.annotation import (
+    AnnotationAdjudication,
+    AnnotationReview,
+    DatasetRecording,
+    DatasetSplit,
+    DatasetSplitAssignment,
+    DualReviewResolver,
+    ResolvedAnnotations,
+    RiskJudgment,
+    VenueGroupedSplitter,
+)
 from aquaguard.vision.benchmark import (
     BinaryRiskBenchmark,
     FrameRiskLabels,
@@ -29,10 +40,16 @@ from aquaguard.vision.ultralytics import UltralyticsPoseTrackAnalyzer, Ultralyti
 
 __all__ = [
     "BinaryRiskBenchmark",
+    "AnnotationAdjudication",
+    "AnnotationReview",
     "FrameRiskLabels",
     "CalibratedObservationAdapter",
     "CameraCalibrationRecord",
     "EvaluationProvenance",
+    "DatasetRecording",
+    "DatasetSplit",
+    "DatasetSplitAssignment",
+    "DualReviewResolver",
     "EvaluationCalibrationFile",
     "HomographyProjector",
     "ObservationReplay",
@@ -47,9 +64,12 @@ __all__ = [
     "ReplayEvaluationResult",
     "ReplayEvaluationRunner",
     "ReplayEvaluationImporter",
+    "ResolvedAnnotations",
+    "RiskJudgment",
     "ScriptedFrameAnalyzer",
     "TrackRiskLabel",
     "UltralyticsTrackAnalyzer",
     "UltralyticsPoseTrackAnalyzer",
+    "VenueGroupedSplitter",
     "sha256_file",
 ]
