@@ -179,6 +179,11 @@ class VideoRuntimeManager:
         with self._lock:
             return [self._statuses[key].snapshot() for key in sorted(self._statuses)]
 
+    def protection_level(self, camera_id: str) -> str:
+        with self._lock:
+            status = self._statuses.get(camera_id)
+            return status.protection_level if status is not None else "unconfigured"
+
     def _run(self, camera_id: str, runtime: ManagedVideoRuntime) -> None:
         try:
             while not self._stop.is_set():

@@ -59,7 +59,7 @@ def test_evidence_status_api_reports_pending_and_missing() -> None:
     assert missing.status_code == 404
 
 
-def test_confirmed_evaluation_opens_evidence_window() -> None:
+def test_confirmed_evaluation_is_suppressed_without_validated_camera() -> None:
     service.engine._consecutive.clear()
     service.events.clear()
     service._last_alarm.clear()
@@ -80,12 +80,11 @@ def test_confirmed_evaluation_opens_evidence_window() -> None:
     }
 
     responses = [client.post("/api/v1/evaluations", json=payload) for _ in range(3)]
-    event = responses[-1].json()["event"]
-    evidence = client.get(f"/api/v1/events/{event['id']}/evidence")
+    result = responses[-1].json()
 
     assert all(response.status_code == 200 for response in responses)
-    assert event is not None
-    assert evidence.status_code == 200
-    assert evidence.json()["status"] == "pending"
-    assert evidence.json()["starts_at"] == 70
-    assert evidence.json()["ends_at"] == 160
+    assert result["assessment"]["confirmed"] is True
+    assert result["event"] is None
+    assert result["alarm_eligible"] is False
+    assert result["suppression_reason"] == "camera_protection_level:unconfigured"
+    assert evidence_service.recorder.pending == {}

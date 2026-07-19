@@ -29,6 +29,8 @@ Pose 适配器还输出跨帧 `wrist_motion` 及其置信度；关键点遮挡�
 
 运行状态 API 会分别报告 `tracking_only`、`pose_baseline` 或未来的 `validated_assistive_alerting`。视频线程处于运行状态不代表已具备防溺水报警能力。
 
+主应用的报警资格门只允许 `validated_assistive_alerting` 创建对外报警事件和证据窗口。未验证摄像头仍可返回风险评估，但 API 会给出 `alarm_eligible=false` 和明确抑制原因。
+
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
 ## 快速运行

@@ -3,6 +3,7 @@ import pytest
 from aquaguard.domain import RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
 from aquaguard.risk import RiskEngine
+from aquaguard.protection import ValidatedProtectionAlarmGate
 from aquaguard.service import EventService
 
 
@@ -79,3 +80,46 @@ def test_confirmation_frames_are_isolated_by_camera() -> None:
 
     assert first is None
     assert second is None
+
+
+class ProtectionLevels:
+    def __init__(self, levels: dict[str, str]) -> None:
+        self.levels = levels
+
+    def protection_level(self, camera_id: str) -> str:
+        return self.levels.get(camera_id, "unconfigured")
+
+
+def test_unvalidated_camera_cannot_register_alarm_or_evidence(tmp_path) -> None:
+    evidence = EventEvidenceService(EvidenceRecorder(), FileEvidenceRepository(tmp_path))
+    service = EventService(
+        RiskEngine(confirmation_frames=1),
+        evidence=evidence,
+        alarm_gate=ValidatedProtectionAlarmGate(
+            ProtectionLevels({"cam-a": "pose_baseline"})
+        ),
+    )
+
+    result = service.evaluate_decision("cam-a", "track-1", "pool", dangerous_features())
+
+    assert result.assessment.confirmed is True
+    assert result.alarm_eligible is False
+    assert result.suppression_reason == "camera_protection_level:pose_baseline"
+    assert result.event is None
+    assert service.events == []
+    assert evidence.recorder.pending == {}
+
+
+def test_validated_assistive_camera_can_register_alarm() -> None:
+    service = EventService(
+        RiskEngine(confirmation_frames=1),
+        alarm_gate=ValidatedProtectionAlarmGate(
+            ProtectionLevels({"cam-a": "validated_assistive_alerting"})
+        ),
+    )
+
+    result = service.evaluate_decision("cam-a", "track-1", "pool", dangerous_features())
+
+    assert result.alarm_eligible is True
+    assert result.suppression_reason is None
+    assert result.event is not None

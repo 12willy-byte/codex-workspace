@@ -8,6 +8,7 @@ from aquaguard.assembly import ConfiguredFrameAnalyzerFactory, VideoRuntimeAssem
 from aquaguard.config import get_settings
 from aquaguard.domain import EventStatus, RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
+from aquaguard.protection import ValidatedProtectionAlarmGate
 from aquaguard.risk import RiskEngine
 from aquaguard.runtime import VideoRuntimeManager
 from aquaguard.service import EventService
@@ -30,6 +31,7 @@ service = EventService(
     evidence=evidence_service,
     evidence_pre_seconds=settings.evidence_pre_seconds,
     evidence_post_seconds=settings.evidence_post_seconds,
+    alarm_gate=ValidatedProtectionAlarmGate(video_manager),
 )
 
 
@@ -91,14 +93,19 @@ def video_runtime_statuses() -> list[dict]:
 
 @app.post("/api/v1/evaluations")
 def evaluate(request: EvaluationRequest) -> dict:
-    assessment, event = service.evaluate(
+    result = service.evaluate_decision(
         request.camera_id,
         request.track_id,
         request.area,
         request.features,
         observed_at=request.observed_at,
     )
-    return {"assessment": assessment, "event": event}
+    return {
+        "assessment": result.assessment,
+        "event": result.event,
+        "alarm_eligible": result.alarm_eligible,
+        "suppression_reason": result.suppression_reason,
+    }
 
 
 @app.get("/api/v1/events")
