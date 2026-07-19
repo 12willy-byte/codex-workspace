@@ -6,7 +6,12 @@ from pydantic import BaseModel, Field
 from aquaguard import __version__
 from aquaguard.assembly import ConfiguredFrameAnalyzerFactory, VideoRuntimeAssembler
 from aquaguard.audit import SQLiteEvaluationAuditRepository
-from aquaguard.auth import AuthenticatedOperator, OperatorAuthenticator, OperatorRole
+from aquaguard.auth import (
+    AuthenticatedOperator,
+    OperatorAuthenticator,
+    Permission,
+    is_authorized,
+)
 from aquaguard.config import get_settings
 from aquaguard.consistency import EvidenceConsistencyService
 from aquaguard.domain import EventStatus, RiskFeatures
@@ -70,7 +75,7 @@ operator_authenticator = OperatorAuthenticator(settings.operator_credentials)
 
 def require_operator(
     authorization: str | None,
-    allowed_roles: tuple[OperatorRole, ...],
+    permission: Permission,
 ) -> AuthenticatedOperator:
     operator = operator_authenticator.authenticate(authorization)
     if operator is None:
@@ -79,7 +84,7 @@ def require_operator(
             detail="valid operator bearer token required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if operator.role not in allowed_roles:
+    if not is_authorized(operator, permission):
         raise HTTPException(status_code=403, detail="operator role is not permitted")
     return operator
 
@@ -142,12 +147,19 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/v1/video-runtimes")
-def video_runtime_statuses() -> list[dict]:
+def video_runtime_statuses(
+    authorization: str | None = Header(default=None),
+) -> list[dict]:
+    require_operator(authorization, Permission.VIEW_OPERATIONS)
     return video_manager.statuses()
 
 
 @app.post("/api/v1/evaluations")
-def evaluate(request: EvaluationRequest) -> dict:
+def evaluate(
+    request: EvaluationRequest,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    require_operator(authorization, Permission.INGEST_OBSERVATIONS)
     result = service.evaluate_decision(
         request.camera_id,
         request.track_id,
@@ -164,7 +176,8 @@ def evaluate(request: EvaluationRequest) -> dict:
 
 
 @app.get("/api/v1/events")
-def list_events() -> list:
+def list_events(authorization: str | None = Header(default=None)) -> list:
+    require_operator(authorization, Permission.VIEW_OPERATIONS)
     return service.list_events()
 
 
@@ -173,7 +186,9 @@ def list_evaluation_audits(
     limit: int | None = None,
     camera_id: str | None = None,
     suppression_reason: str | None = None,
+    authorization: str | None = Header(default=None),
 ) -> list:
+    require_operator(authorization, Permission.VIEW_AUDIT)
     try:
         return service.list_audits(
             limit=limit,
@@ -185,7 +200,12 @@ def list_evaluation_audits(
 
 
 @app.patch("/api/v1/events/{event_id}")
-def update_event(event_id: str, request: StatusRequest):
+def update_event(
+    event_id: str,
+    request: StatusRequest,
+    authorization: str | None = Header(default=None),
+):
+    require_operator(authorization, Permission.MANAGE_INCIDENTS)
     event = service.update_status(event_id, request.status)
     if event is None:
         raise HTTPException(status_code=404, detail="event not found")
@@ -193,7 +213,11 @@ def update_event(event_id: str, request: StatusRequest):
 
 
 @app.get("/api/v1/events/{event_id}/evidence")
-def evidence_status(event_id: str) -> dict:
+def evidence_status(
+    event_id: str,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    require_operator(authorization, Permission.VIEW_OPERATIONS)
     status = evidence_service.status(event_id)
     if status["status"] == "missing":
         raise HTTPException(status_code=404, detail="evidence not found")
@@ -206,7 +230,7 @@ def evidence_consistency(
 ) -> dict:
     require_operator(
         authorization,
-        (OperatorRole.ADMIN, OperatorRole.MAINTAINER),
+        Permission.VIEW_AUDIT,
     )
     return consistency_service.inspect().model_dump(mode="json")
 
@@ -220,7 +244,7 @@ def remediate_evidence(
         raise HTTPException(status_code=503, detail="evidence remediation is disabled")
     operator = require_operator(
         authorization,
-        (OperatorRole.ADMIN, OperatorRole.MAINTAINER),
+        Permission.REMEDIATE_EVIDENCE,
     )
     try:
         return remediation_service.execute(
@@ -240,13 +264,17 @@ def list_evidence_remediations(
 ) -> list:
     require_operator(
         authorization,
-        (OperatorRole.ADMIN, OperatorRole.MAINTAINER),
+        Permission.VIEW_AUDIT,
     )
     return remediation_service.list(target_id=target_id)
 
 
 @app.post("/api/v1/world-model/frames")
-def process_world_frame(request: WorldFrameRequest) -> dict:
+def process_world_frame(
+    request: WorldFrameRequest,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    require_operator(authorization, Permission.INGEST_OBSERVATIONS)
     observations = [CameraObservation(**item.model_dump()) for item in request.observations]
     try:
         return world_model.process(observations)

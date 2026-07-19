@@ -3,7 +3,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from aquaguard.auth import OperatorAuthenticator, OperatorCredential, OperatorRole
+from aquaguard.auth import (
+    AuthenticatedOperator,
+    OperatorAuthenticator,
+    OperatorCredential,
+    OperatorRole,
+    Permission,
+    is_authorized,
+)
 
 
 TOKEN = "a-strong-local-operator-token-value-123456789"
@@ -70,3 +77,22 @@ def test_credential_expiry_requires_timezone() -> None:
             token_sha256=hashlib.sha256(TOKEN.encode()).hexdigest(),
             expires_at=datetime(2026, 7, 19),
         )
+
+
+@pytest.mark.parametrize(
+    ("role", "permission", "allowed"),
+    (
+        (OperatorRole.ADMIN, Permission.REMEDIATE_EVIDENCE, True),
+        (OperatorRole.MAINTAINER, Permission.VIEW_AUDIT, True),
+        (OperatorRole.LIFEGUARD, Permission.MANAGE_INCIDENTS, True),
+        (OperatorRole.LIFEGUARD, Permission.VIEW_AUDIT, False),
+        (OperatorRole.VIEWER, Permission.VIEW_OPERATIONS, True),
+        (OperatorRole.VIEWER, Permission.MANAGE_INCIDENTS, False),
+        (OperatorRole.SERVICE, Permission.INGEST_OBSERVATIONS, True),
+        (OperatorRole.SERVICE, Permission.VIEW_OPERATIONS, False),
+    ),
+)
+def test_role_permission_matrix(role, permission, allowed) -> None:
+    operator = AuthenticatedOperator(username="test", role=role)
+
+    assert is_authorized(operator, permission) is allowed

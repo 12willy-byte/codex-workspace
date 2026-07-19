@@ -12,6 +12,31 @@ class OperatorRole(StrEnum):
     MAINTAINER = "maintainer"
     LIFEGUARD = "lifeguard"
     VIEWER = "viewer"
+    SERVICE = "service"
+
+
+class Permission(StrEnum):
+    VIEW_OPERATIONS = "view_operations"
+    MANAGE_INCIDENTS = "manage_incidents"
+    VIEW_AUDIT = "view_audit"
+    REMEDIATE_EVIDENCE = "remediate_evidence"
+    INGEST_OBSERVATIONS = "ingest_observations"
+
+
+ROLE_PERMISSIONS: dict[OperatorRole, frozenset[Permission]] = {
+    OperatorRole.ADMIN: frozenset(Permission),
+    OperatorRole.MAINTAINER: frozenset(
+        {
+            Permission.VIEW_OPERATIONS,
+            Permission.MANAGE_INCIDENTS,
+            Permission.VIEW_AUDIT,
+            Permission.REMEDIATE_EVIDENCE,
+        }
+    ),
+    OperatorRole.LIFEGUARD: frozenset({Permission.VIEW_OPERATIONS, Permission.MANAGE_INCIDENTS}),
+    OperatorRole.VIEWER: frozenset({Permission.VIEW_OPERATIONS}),
+    OperatorRole.SERVICE: frozenset({Permission.INGEST_OBSERVATIONS}),
+}
 
 
 class OperatorCredential(BaseModel):
@@ -69,3 +94,7 @@ class OperatorAuthenticator:
         if matched is None:
             return None
         return AuthenticatedOperator(username=matched.username, role=matched.role)
+
+
+def is_authorized(operator: AuthenticatedOperator, permission: Permission) -> bool:
+    return permission in ROLE_PERMISSIONS[operator.role]

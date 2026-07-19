@@ -12,6 +12,15 @@ from aquaguard.main import (
 )
 
 client = TestClient(app)
+ADMIN_TOKEN = "a-strong-local-admin-token-value-123456789"
+operator_authenticator.credentials = (
+    OperatorCredential(
+        username="test-admin",
+        role=OperatorRole.ADMIN,
+        token_sha256=hashlib.sha256(ADMIN_TOKEN.encode()).hexdigest(),
+    ),
+)
+client.headers["Authorization"] = f"Bearer {ADMIN_TOKEN}"
 
 
 def test_health() -> None:
@@ -24,6 +33,12 @@ def test_video_runtime_status_api() -> None:
     response = client.get("/api/v1/video-runtimes")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_operational_api_rejects_anonymous_requests() -> None:
+    response = client.get("/api/v1/events", headers={"Authorization": ""})
+
+    assert response.status_code == 401
 
 
 def test_evaluation_validation() -> None:
@@ -93,7 +108,9 @@ def operator_headers(monkeypatch, role=OperatorRole.MAINTAINER) -> dict[str, str
 
 
 def test_evidence_consistency_api_requires_maintenance_role(monkeypatch) -> None:
-    unauthenticated = client.get("/api/v1/system/evidence-consistency")
+    unauthenticated = client.get(
+        "/api/v1/system/evidence-consistency", headers={"Authorization": ""}
+    )
     response = client.get(
         "/api/v1/system/evidence-consistency",
         headers=operator_headers(monkeypatch),
@@ -126,6 +143,7 @@ def test_enabled_evidence_remediation_api_requires_authentication(monkeypatch) -
 
     response = client.post(
         "/api/v1/system/evidence-remediations",
+        headers={"Authorization": ""},
         json={
             "target_id": "unknown-event",
             "action": "persist_ready",
@@ -184,8 +202,41 @@ def test_lifeguard_role_cannot_remediate_evidence(monkeypatch) -> None:
     assert response.status_code == 403
 
 
+def test_lifeguard_can_view_operations_but_not_audits(monkeypatch) -> None:
+    headers = operator_headers(monkeypatch, OperatorRole.LIFEGUARD)
+
+    operations = client.get("/api/v1/video-runtimes", headers=headers)
+    audits = client.get("/api/v1/evaluation-audits", headers=headers)
+
+    assert operations.status_code == 200
+    assert audits.status_code == 403
+
+
+def test_service_role_can_ingest_but_not_read_incidents(monkeypatch) -> None:
+    headers = operator_headers(monkeypatch, OperatorRole.SERVICE)
+    payload = {
+        "observations": [
+            {
+                "camera_id": "service-camera",
+                "track_id": "service-track",
+                "timestamp": 2.0,
+                "pool_x": 1.0,
+                "pool_y": 1.0,
+            }
+        ]
+    }
+
+    ingest = client.post("/api/v1/world-model/frames", headers=headers, json=payload)
+    incidents = client.get("/api/v1/events", headers=headers)
+
+    assert ingest.status_code == 200
+    assert incidents.status_code == 403
+
+
 def test_evidence_remediation_audit_api_requires_maintenance_role(monkeypatch) -> None:
-    unauthenticated = client.get("/api/v1/system/evidence-remediations")
+    unauthenticated = client.get(
+        "/api/v1/system/evidence-remediations", headers={"Authorization": ""}
+    )
     response = client.get(
         "/api/v1/system/evidence-remediations",
         headers=operator_headers(monkeypatch),
