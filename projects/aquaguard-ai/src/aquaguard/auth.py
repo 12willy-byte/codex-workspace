@@ -1,8 +1,10 @@
 import hashlib
 import hmac
+from collections.abc import Callable
+from datetime import datetime, timezone
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class OperatorRole(StrEnum):
@@ -16,6 +18,15 @@ class OperatorCredential(BaseModel):
     username: str = Field(min_length=1)
     role: OperatorRole
     token_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime | None = None
+    revoked: bool = False
+
+    @field_validator("expires_at")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("expires_at must include a timezone")
+        return value
 
 
 class AuthenticatedOperator(BaseModel):
@@ -26,11 +37,16 @@ class AuthenticatedOperator(BaseModel):
 class OperatorAuthenticator:
     """Authenticate opaque bearer tokens against configured SHA-256 fingerprints."""
 
-    def __init__(self, credentials: tuple[OperatorCredential, ...] = ()) -> None:
-        usernames = [credential.username for credential in credentials]
-        if len(usernames) != len(set(usernames)):
-            raise ValueError("operator usernames must be unique")
+    def __init__(
+        self,
+        credentials: tuple[OperatorCredential, ...] = (),
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        fingerprints = [credential.token_sha256 for credential in credentials]
+        if len(fingerprints) != len(set(fingerprints)):
+            raise ValueError("operator token fingerprints must be unique")
         self.credentials = credentials
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
 
     def authenticate(self, authorization: str | None) -> AuthenticatedOperator | None:
         if authorization is None or not authorization.startswith("Bearer "):
@@ -39,9 +55,16 @@ class OperatorAuthenticator:
         if len(token) < 32:
             return None
         fingerprint = hashlib.sha256(token.encode()).hexdigest()
+        now = self.clock()
+        if now.tzinfo is None:
+            raise ValueError("authentication clock must return a timezone-aware datetime")
         matched: OperatorCredential | None = None
         for credential in self.credentials:
-            if hmac.compare_digest(fingerprint, credential.token_sha256):
+            fingerprint_matches = hmac.compare_digest(fingerprint, credential.token_sha256)
+            active = not credential.revoked and (
+                credential.expires_at is None or now < credential.expires_at
+            )
+            if fingerprint_matches and active:
                 matched = credential
         if matched is None:
             return None

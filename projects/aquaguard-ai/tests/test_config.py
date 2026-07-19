@@ -14,6 +14,8 @@ def test_operator_credentials_load_from_environment_json(monkeypatch) -> None:
                     "username": "maintainer-1",
                     "role": "maintainer",
                     "token_sha256": fingerprint,
+                    "expires_at": "2027-01-01T00:00:00Z",
+                    "revoked": False,
                 }
             ]
         ),

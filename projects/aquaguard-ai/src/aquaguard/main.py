@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from aquaguard import __version__
 from aquaguard.assembly import ConfiguredFrameAnalyzerFactory, VideoRuntimeAssembler
 from aquaguard.audit import SQLiteEvaluationAuditRepository
-from aquaguard.auth import OperatorAuthenticator, OperatorRole
+from aquaguard.auth import AuthenticatedOperator, OperatorAuthenticator, OperatorRole
 from aquaguard.config import get_settings
 from aquaguard.consistency import EvidenceConsistencyService
 from aquaguard.domain import EventStatus, RiskFeatures
@@ -66,6 +66,22 @@ remediation_service = EvidenceRemediationService(
     ),
 )
 operator_authenticator = OperatorAuthenticator(settings.operator_credentials)
+
+
+def require_operator(
+    authorization: str | None,
+    allowed_roles: tuple[OperatorRole, ...],
+) -> AuthenticatedOperator:
+    operator = operator_authenticator.authenticate(authorization)
+    if operator is None:
+        raise HTTPException(
+            status_code=401,
+            detail="valid operator bearer token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if operator.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="operator role is not permitted")
+    return operator
 
 
 @asynccontextmanager
@@ -185,7 +201,13 @@ def evidence_status(event_id: str) -> dict:
 
 
 @app.get("/api/v1/system/evidence-consistency")
-def evidence_consistency() -> dict:
+def evidence_consistency(
+    authorization: str | None = Header(default=None),
+) -> dict:
+    require_operator(
+        authorization,
+        (OperatorRole.ADMIN, OperatorRole.MAINTAINER),
+    )
     return consistency_service.inspect().model_dump(mode="json")
 
 
@@ -196,15 +218,10 @@ def remediate_evidence(
 ) -> dict:
     if not settings.remediation_enabled:
         raise HTTPException(status_code=503, detail="evidence remediation is disabled")
-    operator = operator_authenticator.authenticate(authorization)
-    if operator is None:
-        raise HTTPException(
-            status_code=401,
-            detail="valid operator bearer token required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if operator.role not in (OperatorRole.ADMIN, OperatorRole.MAINTAINER):
-        raise HTTPException(status_code=403, detail="operator role cannot remediate evidence")
+    operator = require_operator(
+        authorization,
+        (OperatorRole.ADMIN, OperatorRole.MAINTAINER),
+    )
     try:
         return remediation_service.execute(
             request.target_id,
@@ -217,7 +234,14 @@ def remediate_evidence(
 
 
 @app.get("/api/v1/system/evidence-remediations")
-def list_evidence_remediations(target_id: str | None = None) -> list:
+def list_evidence_remediations(
+    target_id: str | None = None,
+    authorization: str | None = Header(default=None),
+) -> list:
+    require_operator(
+        authorization,
+        (OperatorRole.ADMIN, OperatorRole.MAINTAINER),
+    )
     return remediation_service.list(target_id=target_id)
 
 

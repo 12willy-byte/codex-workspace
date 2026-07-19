@@ -81,9 +81,25 @@ def test_evidence_status_api_reports_pending_and_missing() -> None:
     assert missing.status_code == 404
 
 
-def test_evidence_consistency_api() -> None:
-    response = client.get("/api/v1/system/evidence-consistency")
+def operator_headers(monkeypatch, role=OperatorRole.MAINTAINER) -> dict[str, str]:
+    token = f"a-strong-local-{role.value}-token-value-123456789"
+    credential = OperatorCredential(
+        username=f"{role.value}-1",
+        role=role,
+        token_sha256=hashlib.sha256(token.encode()).hexdigest(),
+    )
+    monkeypatch.setattr(operator_authenticator, "credentials", (credential,))
+    return {"Authorization": f"Bearer {token}"}
 
+
+def test_evidence_consistency_api_requires_maintenance_role(monkeypatch) -> None:
+    unauthenticated = client.get("/api/v1/system/evidence-consistency")
+    response = client.get(
+        "/api/v1/system/evidence-consistency",
+        headers=operator_headers(monkeypatch),
+    )
+
+    assert unauthenticated.status_code == 401
     assert response.status_code == 200
     assert "events" in response.json()
     assert "orphaned_evidence_ids" in response.json()
@@ -168,9 +184,14 @@ def test_lifeguard_role_cannot_remediate_evidence(monkeypatch) -> None:
     assert response.status_code == 403
 
 
-def test_evidence_remediation_audit_api() -> None:
-    response = client.get("/api/v1/system/evidence-remediations")
+def test_evidence_remediation_audit_api_requires_maintenance_role(monkeypatch) -> None:
+    unauthenticated = client.get("/api/v1/system/evidence-remediations")
+    response = client.get(
+        "/api/v1/system/evidence-remediations",
+        headers=operator_headers(monkeypatch),
+    )
 
+    assert unauthenticated.status_code == 401
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 

@@ -41,7 +41,7 @@ Pose 适配器还输出跨帧 `wrist_motion` 及其置信度；关键点遮挡�
 
 证据处置支持把 `ready` 片段写盘，以及对缺失、孤立和完整性失败进行带操作人和原因的审计记录；失败尝试同样留下结果。处置不会删除证据或补造事件。写 API 默认关闭，只有设置 `AQUAGUARD_REMEDIATION_ENABLED=true` 才开放。`AQUAGUARD_OPERATOR_CREDENTIALS` 接受 JSON 凭据列表，每项包含 `username`、`role` 和原始令牌的 SHA-256 指纹；只有 `admin` 和 `maintainer` 可执行处置，审计中的操作人由服务端认证结果生成，不再相信请求自报。原始令牌不得写入配置或仓库。设置 `AQUAGUARD_REMEDIATION_DATABASE_PATH` 可将处置审计保存到 SQLite 并在重启后恢复。
 
-当前认证属于单台边缘设备的静态 Bearer 令牌基线，尚不包含令牌轮换、吊销、过期时间、集中用户目录或完整会话管理，不能等同于完整商业身份平台。
+当前认证属于单台边缘设备的静态 Bearer 令牌基线。凭据可配置带时区的 `expires_at` 和 `revoked`，同一操作人可同时保留新旧两个不同指纹以平滑轮换；变更需要重启服务生效。证据一致性报告和处置审计也只允许管理员或维护员读取。系统尚不包含动态凭据管理、集中用户目录或完整会话管理，不能等同于完整商业身份平台。
 
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
