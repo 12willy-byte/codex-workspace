@@ -1,9 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from aquaguard.domain import RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
-from aquaguard.risk import RiskEngine
 from aquaguard.protection import ValidatedProtectionAlarmGate
+from aquaguard.risk import RiskEngine
 from aquaguard.service import EventService
 
 
@@ -162,3 +164,33 @@ def test_evaluation_audit_is_a_snapshot_not_a_shared_reference() -> None:
 
     assert service.audits[0].features.head_underwater == 1
     assert service.audits[0].assessment.score == 100
+
+
+def test_concurrent_confirmations_create_only_one_event() -> None:
+    service = EventService(
+        RiskEngine(confirmation_frames=2), cooldown_seconds=60, clock=lambda: 100
+    )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(
+            executor.map(
+                lambda _: service.evaluate_decision(
+                    "cam-a", "track-1", "pool", dangerous_features()
+                ),
+                range(20),
+            )
+        )
+
+    assert sum(result.event is not None for result in results) == 1
+    assert len(service.list_events()) == 1
+    assert len(service.audits) == 20
+
+
+def test_list_events_returns_detached_snapshots() -> None:
+    service = EventService(RiskEngine(confirmation_frames=1))
+    service.evaluate_decision("cam-a", "track-1", "pool", dangerous_features())
+
+    events = service.list_events()
+    events[0].area = "tampered"
+
+    assert service.list_events()[0].area == "pool"

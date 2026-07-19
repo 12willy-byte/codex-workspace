@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from threading import RLock
 from time import monotonic
 from typing import Protocol
 
@@ -62,6 +63,7 @@ class EventService:
         )
         self.events: list[AlarmEvent] = []
         self._last_alarm: dict[tuple[str, str], float] = {}
+        self._lock = RLock()
 
     def evaluate(
         self,
@@ -82,6 +84,24 @@ class EventService:
         return result.assessment, result.event
 
     def evaluate_decision(
+        self,
+        camera_id: str,
+        track_id: str,
+        area: str,
+        features: RiskFeatures,
+        *,
+        observed_at: float | None = None,
+    ) -> EventEvaluation:
+        with self._lock:
+            return self._evaluate_decision(
+                camera_id,
+                track_id,
+                area,
+                features,
+                observed_at=observed_at,
+            )
+
+    def _evaluate_decision(
         self,
         camera_id: str,
         track_id: str,
@@ -177,8 +197,13 @@ class EventService:
         )
 
     def update_status(self, event_id: str, status: EventStatus) -> AlarmEvent | None:
-        for event in self.events:
-            if str(event.id) == event_id:
-                event.status = status
-                return event
+        with self._lock:
+            for event in self.events:
+                if str(event.id) == event_id:
+                    event.status = status
+                    return event.model_copy(deep=True)
         return None
+
+    def list_events(self) -> list[AlarmEvent]:
+        with self._lock:
+            return [event.model_copy(deep=True) for event in self.events]

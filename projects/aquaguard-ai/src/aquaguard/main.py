@@ -119,7 +119,7 @@ def evaluate(request: EvaluationRequest) -> dict:
 
 @app.get("/api/v1/events")
 def list_events() -> list:
-    return service.events
+    return service.list_events()
 
 
 @app.get("/api/v1/evaluation-audits")
