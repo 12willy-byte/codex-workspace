@@ -1,4 +1,3 @@
-from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import monotonic
@@ -11,6 +10,7 @@ from aquaguard.domain import (
     RiskAssessment,
     RiskFeatures,
 )
+from aquaguard.audit import EvaluationAuditRepository, InMemoryEvaluationAuditRepository
 from aquaguard.risk import RiskEngine
 from aquaguard.protection import AlarmGate, AllowAllAlarmGate
 
@@ -46,6 +46,7 @@ class EventService:
         clock: Callable[[], float] = monotonic,
         alarm_gate: AlarmGate | None = None,
         audit_capacity: int = 1000,
+        audit_repository: EvaluationAuditRepository | None = None,
     ) -> None:
         if audit_capacity < 1:
             raise ValueError("audit_capacity must be positive")
@@ -56,7 +57,9 @@ class EventService:
         self.evidence_post_seconds = evidence_post_seconds
         self.clock = clock
         self.alarm_gate = alarm_gate or AllowAllAlarmGate()
-        self.audits: deque[EvaluationAudit] = deque(maxlen=audit_capacity)
+        self.audit_repository = audit_repository or InMemoryEvaluationAuditRepository(
+            audit_capacity
+        )
         self.events: list[AlarmEvent] = []
         self._last_alarm: dict[tuple[str, str], float] = {}
 
@@ -142,7 +145,7 @@ class EventService:
         features: RiskFeatures,
         result: EventEvaluation,
     ) -> EventEvaluation:
-        self.audits.append(
+        self.audit_repository.append(
             EvaluationAudit(
                 camera_id=camera_id,
                 track_id=track_id,
@@ -155,6 +158,23 @@ class EventService:
             )
         )
         return result
+
+    @property
+    def audits(self) -> list[EvaluationAudit]:
+        return self.audit_repository.list()
+
+    def list_audits(
+        self,
+        *,
+        limit: int | None = None,
+        camera_id: str | None = None,
+        suppression_reason: str | None = None,
+    ) -> list[EvaluationAudit]:
+        return self.audit_repository.list(
+            limit=limit,
+            camera_id=camera_id,
+            suppression_reason=suppression_reason,
+        )
 
     def update_status(self, event_id: str, status: EventStatus) -> AlarmEvent | None:
         for event in self.events:

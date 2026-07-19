@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     evidence_directory: Path = Path("./data/evidence")
     cameras: tuple[CameraRuntimeConfig, ...] = ()
     evaluation_audit_capacity: int = Field(default=1000, ge=1)
+    audit_database_path: Path | None = None
 
 
 @lru_cache

@@ -93,3 +93,12 @@ def test_confirmed_evaluation_is_suppressed_without_validated_camera() -> None:
     assert audits.status_code == 200
     assert audits.json()[-1]["track_id"] == track_id
     assert audits.json()[-1]["suppression_reason"] == result["suppression_reason"]
+
+    filtered = client.get(
+        "/api/v1/evaluation-audits",
+        params={"camera_id": "C01", "suppression_reason": result["suppression_reason"], "limit": 1},
+    )
+    invalid = client.get("/api/v1/evaluation-audits", params={"limit": 0})
+    assert filtered.status_code == 200
+    assert len(filtered.json()) == 1
+    assert invalid.status_code == 422

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from aquaguard import __version__
 from aquaguard.assembly import ConfiguredFrameAnalyzerFactory, VideoRuntimeAssembler
+from aquaguard.audit import SQLiteEvaluationAuditRepository
 from aquaguard.config import get_settings
 from aquaguard.domain import EventStatus, RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
@@ -33,6 +34,13 @@ service = EventService(
     evidence_post_seconds=settings.evidence_post_seconds,
     alarm_gate=ValidatedProtectionAlarmGate(video_manager),
     audit_capacity=settings.evaluation_audit_capacity,
+    audit_repository=(
+        SQLiteEvaluationAuditRepository(
+            settings.audit_database_path, settings.evaluation_audit_capacity
+        )
+        if settings.audit_database_path is not None
+        else None
+    ),
 )
 
 
@@ -115,8 +123,19 @@ def list_events() -> list:
 
 
 @app.get("/api/v1/evaluation-audits")
-def list_evaluation_audits() -> list:
-    return list(service.audits)
+def list_evaluation_audits(
+    limit: int | None = None,
+    camera_id: str | None = None,
+    suppression_reason: str | None = None,
+) -> list:
+    try:
+        return service.list_audits(
+            limit=limit,
+            camera_id=camera_id,
+            suppression_reason=suppression_reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.patch("/api/v1/events/{event_id}")
