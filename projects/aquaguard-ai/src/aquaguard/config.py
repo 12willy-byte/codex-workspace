@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     remediation_database_path: Path | None = None
     remediation_enabled: bool = False
     operator_credentials: tuple[OperatorCredential, ...] = ()
+    operator_credential_database_path: Path | None = None
     security_audit_capacity: int = Field(default=1000, ge=1)
     security_audit_database_path: Path | None = None
     auth_failure_limit: int = Field(default=10, ge=1)

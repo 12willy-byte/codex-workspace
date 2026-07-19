@@ -47,6 +47,10 @@ Pose 适配器还输出跨帧 `wrist_motion` 及其置信度；关键点遮挡�
 
 认证失败、已认证越权和被限流请求会写入有界安全审计；设置 `AQUAGUARD_SECURITY_AUDIT_DATABASE_PATH` 后可用 SQLite 恢复。审计保存权限、路径、连接来源以及已知的操作人/角色，但绝不保存原始令牌。管理员可通过 `/api/v1/security-audits` 查询。连续认证失败默认按连接来源限制为 60 秒内 10 次，相关参数可配置；来源表有容量上限。该限流器是单进程边缘基线，多实例或公网部署仍需反向代理/网关层限流。
 
+设置 `AQUAGUARD_OPERATOR_CREDENTIAL_DATABASE_PATH` 可启用动态 SQLite 凭据仓库；空库首次启动时由 `AQUAGUARD_OPERATOR_CREDENTIALS` 引导，之后数据库成为权威来源。管理员可通过 `/api/v1/operator-credentials` 新增和脱敏查看凭据，并吊销旧凭据，变更在当前进程立即生效。系统拒绝重复指纹、已过期的新凭据、自我吊销和吊销最后一个有效管理员。成功及被拒绝的管理动作会写入安全审计。查询接口不会返回 `token_sha256`。
+
+动态凭据目前仍是单进程边缘实现：同一 SQLite 文件上的其他进程不会自动刷新内存认证器；凭据数据库变更与独立安全审计数据库也不是跨库原子事务。多进程部署前需要版本广播或集中身份服务。
+
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
 ## 快速运行

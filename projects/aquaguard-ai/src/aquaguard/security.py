@@ -18,6 +18,9 @@ class SecurityOutcome(StrEnum):
     AUTHENTICATION_FAILED = "authentication_failed"
     AUTHORIZATION_DENIED = "authorization_denied"
     RATE_LIMITED = "rate_limited"
+    CREDENTIAL_CREATED = "credential_created"
+    CREDENTIAL_REVOKED = "credential_revoked"
+    CREDENTIAL_CHANGE_REJECTED = "credential_change_rejected"
 
 
 class SecurityAudit(BaseModel):
@@ -28,6 +31,7 @@ class SecurityAudit(BaseModel):
     client_host: str
     operator: str | None = None
     role: OperatorRole | None = None
+    target_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

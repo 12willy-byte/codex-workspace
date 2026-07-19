@@ -93,6 +93,6 @@ def test_credential_expiry_requires_timezone() -> None:
     ),
 )
 def test_role_permission_matrix(role, permission, allowed) -> None:
-    operator = AuthenticatedOperator(username="test", role=role)
+    operator = AuthenticatedOperator(credential_id=credential().id, username="test", role=role)
 
     assert is_authorized(operator, permission) is allowed

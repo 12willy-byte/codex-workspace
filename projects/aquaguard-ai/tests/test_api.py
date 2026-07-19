@@ -8,20 +8,22 @@ from aquaguard.main import (
     auth_rate_limiter,
     evidence_service,
     operator_authenticator,
+    operator_credential_service,
     service,
     security_audit_repository,
     settings,
 )
+from aquaguard.security import SecurityOutcome
 
 client = TestClient(app)
 ADMIN_TOKEN = "a-strong-local-admin-token-value-123456789"
-operator_authenticator.credentials = (
-    OperatorCredential(
-        username="test-admin",
-        role=OperatorRole.ADMIN,
-        token_sha256=hashlib.sha256(ADMIN_TOKEN.encode()).hexdigest(),
-    ),
+ADMIN_CREDENTIAL = OperatorCredential(
+    username="test-admin",
+    role=OperatorRole.ADMIN,
+    token_sha256=hashlib.sha256(ADMIN_TOKEN.encode()).hexdigest(),
 )
+if not operator_credential_service.list():
+    operator_credential_service.create(ADMIN_CREDENTIAL)
 client.headers["Authorization"] = f"Bearer {ADMIN_TOKEN}"
 
 
@@ -53,6 +55,45 @@ def test_admin_can_query_authentication_failure_audit() -> None:
     assert response.json()[-1]["outcome"] == "authentication_failed"
     assert "token" not in response.text.lower()
     assert security_audit_repository.list()[-1].client_host == "testclient"
+
+
+def test_admin_can_create_and_revoke_dynamic_credential() -> None:
+    token = "dynamic-viewer-token-value-123456789012345"
+    response = client.post(
+        "/api/v1/operator-credentials",
+        json={
+            "username": "dynamic-viewer",
+            "role": "viewer",
+            "token_sha256": hashlib.sha256(token.encode()).hexdigest(),
+        },
+    )
+
+    assert response.status_code == 201
+    assert "token_sha256" not in response.json()
+    credential_id = response.json()["id"]
+    assert operator_authenticator.authenticate(f"Bearer {token}") is not None
+    listed = client.get("/api/v1/operator-credentials")
+    assert listed.status_code == 200
+    assert "token_sha256" not in listed.text
+
+    revoked = client.post(f"/api/v1/operator-credentials/{credential_id}/revoke")
+
+    assert revoked.status_code == 200
+    assert revoked.json()["revoked"] is True
+    assert operator_authenticator.authenticate(f"Bearer {token}") is None
+    created_audits = security_audit_repository.list(outcome=SecurityOutcome.CREDENTIAL_CREATED)
+    revoked_audits = security_audit_repository.list(outcome=SecurityOutcome.CREDENTIAL_REVOKED)
+    assert created_audits[-1].target_id == credential_id
+    assert revoked_audits[-1].target_id == credential_id
+
+
+def test_admin_cannot_revoke_current_credential() -> None:
+    response = client.post(f"/api/v1/operator-credentials/{ADMIN_CREDENTIAL.id}/revoke")
+
+    assert response.status_code == 409
+    assert "cannot revoke their current credential" in response.json()["detail"]
+    rejected = security_audit_repository.list(outcome=SecurityOutcome.CREDENTIAL_CHANGE_REJECTED)
+    assert rejected[-1].target_id == str(ADMIN_CREDENTIAL.id)
 
 
 def test_repeated_authentication_failures_are_rate_limited(monkeypatch) -> None:

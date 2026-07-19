@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from math import ceil
+from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from aquaguard import __version__
 from aquaguard.assembly import ConfiguredFrameAnalyzerFactory, VideoRuntimeAssembler
@@ -11,11 +13,18 @@ from aquaguard.audit import SQLiteEvaluationAuditRepository
 from aquaguard.auth import (
     AuthenticatedOperator,
     OperatorAuthenticator,
+    OperatorCredential,
+    OperatorRole,
     Permission,
     is_authorized,
 )
 from aquaguard.config import get_settings
 from aquaguard.consistency import EvidenceConsistencyService
+from aquaguard.credentials import (
+    InMemoryOperatorCredentialRepository,
+    OperatorCredentialService,
+    SQLiteOperatorCredentialRepository,
+)
 from aquaguard.domain import EventStatus, RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
 from aquaguard.events import SQLiteAlarmEventRepository
@@ -79,7 +88,18 @@ remediation_service = EvidenceRemediationService(
         else None
     ),
 )
-operator_authenticator = OperatorAuthenticator(settings.operator_credentials)
+operator_authenticator = OperatorAuthenticator()
+operator_credential_repository = (
+    SQLiteOperatorCredentialRepository(settings.operator_credential_database_path)
+    if settings.operator_credential_database_path is not None
+    else InMemoryOperatorCredentialRepository()
+)
+if not operator_credential_repository.list():
+    for configured_credential in settings.operator_credentials:
+        operator_credential_repository.append(configured_credential)
+operator_credential_service = OperatorCredentialService(
+    operator_credential_repository, operator_authenticator
+)
 security_audit_repository = (
     SQLiteSecurityAuditRepository(
         settings.security_audit_database_path, settings.security_audit_capacity
@@ -174,6 +194,20 @@ class RemediationRequest(BaseModel):
     target_id: str = Field(min_length=1)
     action: RemediationAction
     reason: str = Field(min_length=1)
+
+
+class CredentialCreateRequest(BaseModel):
+    username: str = Field(min_length=1)
+    role: OperatorRole
+    token_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime | None = None
+
+    @field_validator("expires_at")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("expires_at must include a timezone")
+        return value
 
 
 class ObservationRequest(BaseModel):
@@ -349,6 +383,90 @@ def list_security_audits(
         return security_audit_repository.list(limit=limit, outcome=outcome)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/operator-credentials")
+def list_operator_credentials(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> list:
+    require_operator(request, authorization, Permission.MANAGE_CREDENTIALS)
+    return operator_credential_service.list()
+
+
+@app.post("/api/v1/operator-credentials", status_code=201)
+def create_operator_credential(
+    payload: CredentialCreateRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    operator = require_operator(request, authorization, Permission.MANAGE_CREDENTIALS)
+    credential = OperatorCredential(**payload.model_dump())
+    try:
+        view = operator_credential_service.create(credential)
+    except ValueError as exc:
+        security_audit_repository.append(
+            SecurityAudit(
+                outcome=SecurityOutcome.CREDENTIAL_CHANGE_REJECTED,
+                permission=Permission.MANAGE_CREDENTIALS,
+                path=request.url.path,
+                client_host=(request.client.host if request.client is not None else "unknown"),
+                operator=operator.username,
+                role=operator.role,
+                target_id=str(credential.id),
+            )
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    security_audit_repository.append(
+        SecurityAudit(
+            outcome=SecurityOutcome.CREDENTIAL_CREATED,
+            permission=Permission.MANAGE_CREDENTIALS,
+            path=request.url.path,
+            client_host=request.client.host if request.client is not None else "unknown",
+            operator=operator.username,
+            role=operator.role,
+            target_id=str(view.id),
+        )
+    )
+    return view.model_dump(mode="json")
+
+
+@app.post("/api/v1/operator-credentials/{credential_id}/revoke")
+def revoke_operator_credential(
+    credential_id: UUID,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    operator = require_operator(request, authorization, Permission.MANAGE_CREDENTIALS)
+    try:
+        view = operator_credential_service.revoke(credential_id, operator.credential_id)
+    except ValueError as exc:
+        security_audit_repository.append(
+            SecurityAudit(
+                outcome=SecurityOutcome.CREDENTIAL_CHANGE_REJECTED,
+                permission=Permission.MANAGE_CREDENTIALS,
+                path=request.url.path,
+                client_host=(request.client.host if request.client is not None else "unknown"),
+                operator=operator.username,
+                role=operator.role,
+                target_id=str(credential_id),
+            )
+        )
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if view is None:
+        raise HTTPException(status_code=404, detail="credential not found")
+    security_audit_repository.append(
+        SecurityAudit(
+            outcome=SecurityOutcome.CREDENTIAL_REVOKED,
+            permission=Permission.MANAGE_CREDENTIALS,
+            path=request.url.path,
+            client_host=request.client.host if request.client is not None else "unknown",
+            operator=operator.username,
+            role=operator.role,
+            target_id=str(view.id),
+        )
+    )
+    return view.model_dump(mode="json")
 
 
 @app.post("/api/v1/world-model/frames")

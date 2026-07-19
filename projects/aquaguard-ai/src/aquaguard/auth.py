@@ -3,6 +3,8 @@ import hmac
 from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import StrEnum
+from threading import RLock
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,6 +24,7 @@ class Permission(StrEnum):
     VIEW_SECURITY_AUDIT = "view_security_audit"
     REMEDIATE_EVIDENCE = "remediate_evidence"
     INGEST_OBSERVATIONS = "ingest_observations"
+    MANAGE_CREDENTIALS = "manage_credentials"
 
 
 ROLE_PERMISSIONS: dict[OperatorRole, frozenset[Permission]] = {
@@ -41,11 +44,20 @@ ROLE_PERMISSIONS: dict[OperatorRole, frozenset[Permission]] = {
 
 
 class OperatorCredential(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
     username: str = Field(min_length=1)
     role: OperatorRole
     token_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     expires_at: datetime | None = None
     revoked: bool = False
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("username must not be blank")
+        return value
 
     @field_validator("expires_at")
     @classmethod
@@ -56,6 +68,7 @@ class OperatorCredential(BaseModel):
 
 
 class AuthenticatedOperator(BaseModel):
+    credential_id: UUID
     username: str
     role: OperatorRole
 
@@ -68,11 +81,28 @@ class OperatorAuthenticator:
         credentials: tuple[OperatorCredential, ...] = (),
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        fingerprints = [credential.token_sha256 for credential in credentials]
-        if len(fingerprints) != len(set(fingerprints)):
-            raise ValueError("operator token fingerprints must be unique")
+        self._lock = RLock()
+        self._credentials: tuple[OperatorCredential, ...] = ()
         self.credentials = credentials
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+
+    @property
+    def credentials(self) -> tuple[OperatorCredential, ...]:
+        with self._lock:
+            return tuple(credential.model_copy(deep=True) for credential in self._credentials)
+
+    @credentials.setter
+    def credentials(self, credentials: tuple[OperatorCredential, ...]) -> None:
+        fingerprints = [credential.token_sha256 for credential in credentials]
+        ids = [credential.id for credential in credentials]
+        if len(fingerprints) != len(set(fingerprints)):
+            raise ValueError("operator token fingerprints must be unique")
+        if len(ids) != len(set(ids)):
+            raise ValueError("operator credential ids must be unique")
+        with self._lock:
+            self._credentials = tuple(
+                credential.model_copy(deep=True) for credential in credentials
+            )
 
     def authenticate(self, authorization: str | None) -> AuthenticatedOperator | None:
         if authorization is None or not authorization.startswith("Bearer "):
@@ -94,7 +124,11 @@ class OperatorAuthenticator:
                 matched = credential
         if matched is None:
             return None
-        return AuthenticatedOperator(username=matched.username, role=matched.role)
+        return AuthenticatedOperator(
+            credential_id=matched.id,
+            username=matched.username,
+            role=matched.role,
+        )
 
 
 def is_authorized(operator: AuthenticatedOperator, permission: Permission) -> bool:
