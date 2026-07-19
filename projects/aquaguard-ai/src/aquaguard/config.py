@@ -5,6 +5,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from aquaguard.assembly import CameraRuntimeConfig
+from aquaguard.auth import OperatorCredential
 
 
 class Settings(BaseSettings):
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
     event_database_path: Path | None = None
     remediation_database_path: Path | None = None
     remediation_enabled: bool = False
+    operator_credentials: tuple[OperatorCredential, ...] = ()
 
 
 @lru_cache

@@ -1,6 +1,15 @@
+import hashlib
+
 from fastapi.testclient import TestClient
 
-from aquaguard.main import app, evidence_service, service, settings
+from aquaguard.auth import OperatorCredential, OperatorRole
+from aquaguard.main import (
+    app,
+    evidence_service,
+    operator_authenticator,
+    service,
+    settings,
+)
 
 client = TestClient(app)
 
@@ -96,7 +105,7 @@ def test_evidence_remediation_api_is_disabled_without_explicit_configuration() -
     assert response.json()["detail"] == "evidence remediation is disabled"
 
 
-def test_enabled_evidence_remediation_api_validates_action_state(monkeypatch) -> None:
+def test_enabled_evidence_remediation_api_requires_authentication(monkeypatch) -> None:
     monkeypatch.setattr(settings, "remediation_enabled", True)
 
     response = client.post(
@@ -109,8 +118,54 @@ def test_enabled_evidence_remediation_api_validates_action_state(monkeypatch) ->
         },
     )
 
+    assert response.status_code == 401
+
+
+def test_enabled_evidence_remediation_api_uses_authenticated_operator(monkeypatch) -> None:
+    token = "a-strong-local-operator-token-value-123456789"
+    credential = OperatorCredential(
+        username="trusted-maintainer",
+        role=OperatorRole.MAINTAINER,
+        token_sha256=hashlib.sha256(token.encode()).hexdigest(),
+    )
+    monkeypatch.setattr(settings, "remediation_enabled", True)
+    monkeypatch.setattr(operator_authenticator, "credentials", (credential,))
+
+    response = client.post(
+        "/api/v1/system/evidence-remediations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "target_id": "unknown-event",
+            "action": "persist_ready",
+            "reason": "test invalid state",
+        },
+    )
+
     assert response.status_code == 409
     assert "requires status ready, got unknown" in response.json()["detail"]
+
+
+def test_lifeguard_role_cannot_remediate_evidence(monkeypatch) -> None:
+    token = "a-strong-local-lifeguard-token-value-123456789"
+    credential = OperatorCredential(
+        username="lifeguard-1",
+        role=OperatorRole.LIFEGUARD,
+        token_sha256=hashlib.sha256(token.encode()).hexdigest(),
+    )
+    monkeypatch.setattr(settings, "remediation_enabled", True)
+    monkeypatch.setattr(operator_authenticator, "credentials", (credential,))
+
+    response = client.post(
+        "/api/v1/system/evidence-remediations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "target_id": "unknown-event",
+            "action": "persist_ready",
+            "reason": "not permitted",
+        },
+    )
+
+    assert response.status_code == 403
 
 
 def test_evidence_remediation_audit_api() -> None:

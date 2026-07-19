@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from aquaguard import __version__
 from aquaguard.assembly import ConfiguredFrameAnalyzerFactory, VideoRuntimeAssembler
 from aquaguard.audit import SQLiteEvaluationAuditRepository
+from aquaguard.auth import OperatorAuthenticator, OperatorRole
 from aquaguard.config import get_settings
 from aquaguard.consistency import EvidenceConsistencyService
 from aquaguard.domain import EventStatus, RiskFeatures
@@ -64,6 +65,7 @@ remediation_service = EvidenceRemediationService(
         else None
     ),
 )
+operator_authenticator = OperatorAuthenticator(settings.operator_credentials)
 
 
 @asynccontextmanager
@@ -93,7 +95,6 @@ class StatusRequest(BaseModel):
 class RemediationRequest(BaseModel):
     target_id: str = Field(min_length=1)
     action: RemediationAction
-    operator: str = Field(min_length=1)
     reason: str = Field(min_length=1)
 
 
@@ -189,14 +190,26 @@ def evidence_consistency() -> dict:
 
 
 @app.post("/api/v1/system/evidence-remediations")
-def remediate_evidence(request: RemediationRequest) -> dict:
+def remediate_evidence(
+    request: RemediationRequest,
+    authorization: str | None = Header(default=None),
+) -> dict:
     if not settings.remediation_enabled:
         raise HTTPException(status_code=503, detail="evidence remediation is disabled")
+    operator = operator_authenticator.authenticate(authorization)
+    if operator is None:
+        raise HTTPException(
+            status_code=401,
+            detail="valid operator bearer token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if operator.role not in (OperatorRole.ADMIN, OperatorRole.MAINTAINER):
+        raise HTTPException(status_code=403, detail="operator role cannot remediate evidence")
     try:
         return remediation_service.execute(
             request.target_id,
             request.action,
-            request.operator,
+            operator.username,
             request.reason,
         ).model_dump(mode="json")
     except ValueError as exc:
