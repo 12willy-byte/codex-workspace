@@ -88,3 +88,8 @@ def test_confirmed_evaluation_is_suppressed_without_validated_camera() -> None:
     assert result["alarm_eligible"] is False
     assert result["suppression_reason"] == "camera_protection_level:unconfigured"
     assert evidence_service.recorder.pending == {}
+
+    audits = client.get("/api/v1/evaluation-audits")
+    assert audits.status_code == 200
+    assert audits.json()[-1]["track_id"] == track_id
+    assert audits.json()[-1]["suppression_reason"] == result["suppression_reason"]

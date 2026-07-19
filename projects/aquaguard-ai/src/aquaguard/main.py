@@ -32,6 +32,7 @@ service = EventService(
     evidence_pre_seconds=settings.evidence_pre_seconds,
     evidence_post_seconds=settings.evidence_post_seconds,
     alarm_gate=ValidatedProtectionAlarmGate(video_manager),
+    audit_capacity=settings.evaluation_audit_capacity,
 )
 
 
@@ -111,6 +112,11 @@ def evaluate(request: EvaluationRequest) -> dict:
 @app.get("/api/v1/events")
 def list_events() -> list:
     return service.events
+
+
+@app.get("/api/v1/evaluation-audits")
+def list_evaluation_audits() -> list:
+    return list(service.audits)
 
 
 @app.patch("/api/v1/events/{event_id}")

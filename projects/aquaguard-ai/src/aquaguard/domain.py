@@ -39,3 +39,16 @@ class AlarmEvent(BaseModel):
     assessment: RiskAssessment
     status: EventStatus = EventStatus.NEW
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class EvaluationAudit(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    camera_id: str
+    track_id: str
+    area: str
+    features: RiskFeatures
+    assessment: RiskAssessment
+    alarm_eligible: bool
+    suppression_reason: str | None = None
+    event_id: UUID | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

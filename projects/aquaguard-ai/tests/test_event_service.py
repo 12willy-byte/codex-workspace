@@ -123,3 +123,42 @@ def test_validated_assistive_camera_can_register_alarm() -> None:
     assert result.alarm_eligible is True
     assert result.suppression_reason is None
     assert result.event is not None
+
+
+def test_evaluation_audit_records_suppression_and_is_bounded() -> None:
+    service = EventService(
+        RiskEngine(confirmation_frames=1),
+        alarm_gate=ValidatedProtectionAlarmGate(ProtectionLevels({})),
+        audit_capacity=2,
+    )
+
+    for track_id in ("track-1", "track-2", "track-3"):
+        service.evaluate_decision("cam-a", track_id, "pool", dangerous_features())
+
+    assert [audit.track_id for audit in service.audits] == ["track-2", "track-3"]
+    assert all(
+        audit.suppression_reason == "camera_protection_level:unconfigured"
+        for audit in service.audits
+    )
+    assert all(audit.event_id is None for audit in service.audits)
+
+
+def test_evaluation_audit_links_created_event() -> None:
+    service = EventService(RiskEngine(confirmation_frames=1))
+
+    result = service.evaluate_decision("cam-a", "track-1", "pool", dangerous_features())
+
+    assert result.event is not None
+    assert service.audits[0].event_id == result.event.id
+
+
+def test_evaluation_audit_is_a_snapshot_not_a_shared_reference() -> None:
+    service = EventService(RiskEngine(confirmation_frames=1))
+    features = dangerous_features()
+
+    result = service.evaluate_decision("cam-a", "track-1", "pool", features)
+    features.head_underwater = 0
+    result.assessment.score = 0
+
+    assert service.audits[0].features.head_underwater == 1
+    assert service.audits[0].assessment.score == 100

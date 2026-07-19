@@ -31,6 +31,8 @@ Pose 适配器还输出跨帧 `wrist_motion` 及其置信度；关键点遮挡�
 
 主应用的报警资格门只允许 `validated_assistive_alerting` 创建对外报警事件和证据窗口。未验证摄像头仍可返回风险评估，但 API 会给出 `alarm_eligible=false` 和明确抑制原因。
 
+所有评估会写入有界的进程内审核快照，记录输入特征、风险结果、报警资格、抑制原因和关联事件 ID。当前审核记录尚未持久化，服务重启后会丢失。
+
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
 ## 快速运行

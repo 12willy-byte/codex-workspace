@@ -1,9 +1,16 @@
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import monotonic
 from typing import Protocol
 
-from aquaguard.domain import AlarmEvent, EventStatus, RiskAssessment, RiskFeatures
+from aquaguard.domain import (
+    AlarmEvent,
+    EvaluationAudit,
+    EventStatus,
+    RiskAssessment,
+    RiskFeatures,
+)
 from aquaguard.risk import RiskEngine
 from aquaguard.protection import AlarmGate, AllowAllAlarmGate
 
@@ -38,7 +45,10 @@ class EventService:
         evidence_post_seconds: float = 60,
         clock: Callable[[], float] = monotonic,
         alarm_gate: AlarmGate | None = None,
+        audit_capacity: int = 1000,
     ) -> None:
+        if audit_capacity < 1:
+            raise ValueError("audit_capacity must be positive")
         self.engine = engine
         self.cooldown_seconds = cooldown_seconds
         self.evidence = evidence
@@ -46,6 +56,7 @@ class EventService:
         self.evidence_post_seconds = evidence_post_seconds
         self.clock = clock
         self.alarm_gate = alarm_gate or AllowAllAlarmGate()
+        self.audits: deque[EvaluationAudit] = deque(maxlen=audit_capacity)
         self.events: list[AlarmEvent] = []
         self._last_alarm: dict[tuple[str, str], float] = {}
 
@@ -82,11 +93,29 @@ class EventService:
         last = self._last_alarm.get(alarm_key, float("-inf"))
         eligible, gate_reason = self.alarm_gate.check(camera_id)
         if not assessment.confirmed:
-            return EventEvaluation(assessment, None, eligible, "risk_not_confirmed")
+            return self._complete(
+                camera_id,
+                track_id,
+                area,
+                features,
+                EventEvaluation(assessment, None, eligible, "risk_not_confirmed"),
+            )
         if not eligible:
-            return EventEvaluation(assessment, None, False, gate_reason)
+            return self._complete(
+                camera_id,
+                track_id,
+                area,
+                features,
+                EventEvaluation(assessment, None, False, gate_reason),
+            )
         if now - last < self.cooldown_seconds:
-            return EventEvaluation(assessment, None, True, "cooldown_active")
+            return self._complete(
+                camera_id,
+                track_id,
+                area,
+                features,
+                EventEvaluation(assessment, None, True, "cooldown_active"),
+            )
         event = AlarmEvent(camera_id=camera_id, track_id=track_id, area=area, assessment=assessment)
         if self.evidence is not None:
             self.evidence.request(
@@ -97,7 +126,35 @@ class EventService:
             )
         self.events.append(event)
         self._last_alarm[alarm_key] = now
-        return EventEvaluation(assessment, event, True, None)
+        return self._complete(
+            camera_id,
+            track_id,
+            area,
+            features,
+            EventEvaluation(assessment, event, True, None),
+        )
+
+    def _complete(
+        self,
+        camera_id: str,
+        track_id: str,
+        area: str,
+        features: RiskFeatures,
+        result: EventEvaluation,
+    ) -> EventEvaluation:
+        self.audits.append(
+            EvaluationAudit(
+                camera_id=camera_id,
+                track_id=track_id,
+                area=area,
+                features=features.model_copy(deep=True),
+                assessment=result.assessment.model_copy(deep=True),
+                alarm_eligible=result.alarm_eligible,
+                suppression_reason=result.suppression_reason,
+                event_id=result.event.id if result.event is not None else None,
+            )
+        )
+        return result
 
     def update_status(self, event_id: str, status: EventStatus) -> AlarmEvent | None:
         for event in self.events:

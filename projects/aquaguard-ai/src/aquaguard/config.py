@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./aquaguard.db"
     evidence_directory: Path = Path("./data/evidence")
     cameras: tuple[CameraRuntimeConfig, ...] = ()
+    evaluation_audit_capacity: int = Field(default=1000, ge=1)
 
 
 @lru_cache
