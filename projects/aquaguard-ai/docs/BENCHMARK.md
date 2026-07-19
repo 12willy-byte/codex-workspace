@@ -41,6 +41,30 @@ aquaguard-benchmark evaluation-bundle.json benchmark-report.json
 The command validates the entire bundle before replay. Missing camera calibration, timestamp
 misalignment, malformed probabilities, and unsupported schema versions fail closed.
 
+## Importing controlled files
+
+Use separate files for machine observations and independently reviewed labels:
+
+- observations: JSONL with one `PixelObservationRecord` per detected track and timestamp;
+- labels: JSONL with one `FrameRiskLabels` object per reviewed timestamp;
+- calibration: JSON containing `geometry` and the camera `calibrations` list;
+- source recording: the controlled original file whose SHA-256 becomes immutable provenance.
+
+```bash
+aquaguard-import-evaluation \
+  recording.mp4 observations.jsonl labels.jsonl calibration.json evaluation-bundle.json \
+  --name "pool-a scenario 001" \
+  --model-version "model-v1" \
+  --configuration-version "config-v1" \
+  --annotation-version "review-v1" \
+  --expected-source-sha256 "<64 lowercase hex characters>"
+```
+
+A labelled frame may contain no machine observations; this preserves detector/tracker misses for
+evaluation. A machine-observation timestamp without a reviewed label is rejected so unreviewed
+frames cannot silently affect the score. The optional expected digest should come from the
+controlled data registry, not from the file being imported in the same unchecked workflow.
+
 ## Metrics
 
 `BinaryRiskBenchmark.evaluate(replay_results, manifest)` reports:

@@ -57,6 +57,8 @@ SQLite 版本检查解决了共享本地数据库进程间的最终一致刷新�
 
 可追溯评估包同时保存像素观测、人工标签、摄像头 Homography、泳池几何、源录像 SHA-256 和模型/配置/标注版本。安装项目后可运行 `aquaguard-benchmark evaluation-bundle.json benchmark-report.json`；输出报告包含完整评估包的规范化摘要，便于复核同一输入是否产生同一结果。
 
+`aquaguard-import-evaluation` 可从受控录像、机器观测 JSONL、独立人工标签 JSONL 和标定 JSON 生成评估包，并可核对数据登记系统提供的预期录像摘要。机器观测存在但没有人工标签的时间戳会被拒绝；有标签但无机器观测的帧会保留，用于统计检测或跟踪漏失。
+
 ## 快速运行
 
 ```bash

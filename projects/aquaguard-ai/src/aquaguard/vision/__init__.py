@@ -16,6 +16,11 @@ from aquaguard.vision.evaluation import (
     ReplayEvaluationResult,
     ReplayEvaluationRunner,
 )
+from aquaguard.vision.evaluation_import import (
+    EvaluationCalibrationFile,
+    ReplayEvaluationImporter,
+    sha256_file,
+)
 from aquaguard.vision.models import PixelTrackObservation
 from aquaguard.vision.regions import PolygonRegion
 from aquaguard.vision.replay import ObservationReplay
@@ -28,6 +33,7 @@ __all__ = [
     "CalibratedObservationAdapter",
     "CameraCalibrationRecord",
     "EvaluationProvenance",
+    "EvaluationCalibrationFile",
     "HomographyProjector",
     "ObservationReplay",
     "PixelTrackObservation",
@@ -40,8 +46,10 @@ __all__ = [
     "ReplayEvaluationFrame",
     "ReplayEvaluationResult",
     "ReplayEvaluationRunner",
+    "ReplayEvaluationImporter",
     "ScriptedFrameAnalyzer",
     "TrackRiskLabel",
     "UltralyticsTrackAnalyzer",
     "UltralyticsPoseTrackAnalyzer",
+    "sha256_file",
 ]
