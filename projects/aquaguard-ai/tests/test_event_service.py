@@ -4,6 +4,7 @@ import pytest
 
 from aquaguard.domain import RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
+from aquaguard.events import SQLiteAlarmEventRepository
 from aquaguard.protection import ValidatedProtectionAlarmGate
 from aquaguard.risk import RiskEngine
 from aquaguard.service import EventService
@@ -73,9 +74,7 @@ def test_cooldown_is_isolated_by_camera_and_local_track_id() -> None:
 
 
 def test_confirmation_frames_are_isolated_by_camera() -> None:
-    service = EventService(
-        RiskEngine(confirmation_frames=2), cooldown_seconds=0, clock=lambda: 100
-    )
+    service = EventService(RiskEngine(confirmation_frames=2), cooldown_seconds=0, clock=lambda: 100)
 
     _, first = service.evaluate("cam-a", "track-1", "pool", dangerous_features())
     _, second = service.evaluate("cam-b", "track-1", "pool", dangerous_features())
@@ -97,9 +96,7 @@ def test_unvalidated_camera_cannot_register_alarm_or_evidence(tmp_path) -> None:
     service = EventService(
         RiskEngine(confirmation_frames=1),
         evidence=evidence,
-        alarm_gate=ValidatedProtectionAlarmGate(
-            ProtectionLevels({"cam-a": "pose_baseline"})
-        ),
+        alarm_gate=ValidatedProtectionAlarmGate(ProtectionLevels({"cam-a": "pose_baseline"})),
     )
 
     result = service.evaluate_decision("cam-a", "track-1", "pool", dangerous_features())
@@ -184,6 +181,28 @@ def test_concurrent_confirmations_create_only_one_event() -> None:
     assert sum(result.event is not None for result in results) == 1
     assert len(service.list_events()) == 1
     assert len(service.audits) == 20
+
+
+def test_persisted_cooldown_is_shared_across_service_instances(tmp_path) -> None:
+    path = tmp_path / "events.db"
+    first = EventService(
+        RiskEngine(confirmation_frames=1),
+        cooldown_seconds=60,
+        event_repository=SQLiteAlarmEventRepository(path),
+    )
+    second = EventService(
+        RiskEngine(confirmation_frames=1),
+        cooldown_seconds=60,
+        event_repository=SQLiteAlarmEventRepository(path),
+    )
+
+    first_result = first.evaluate_decision("cam-a", "track-1", "pool", dangerous_features())
+    second_result = second.evaluate_decision("cam-a", "track-1", "pool", dangerous_features())
+
+    assert first_result.event is not None
+    assert second_result.event is None
+    assert second_result.suppression_reason == "cooldown_active"
+    assert len(second.list_events()) == 1
 
 
 def test_list_events_returns_detached_snapshots() -> None:

@@ -35,6 +35,8 @@ Pose 适配器还输出跨帧 `wrist_motion` 及其置信度；关键点遮挡�
 
 设置 `AQUAGUARD_AUDIT_DATABASE_PATH` 后，评估审核改用 SQLite 事务存储并可在重启后恢复；支持按摄像头、抑制原因和数量过滤。未设置时保持有界内存模式。
 
+设置 `AQUAGUARD_EVENT_DATABASE_PATH` 后，正式报警事件、处理状态和冷却依据会写入 SQLite，并可在服务重启后恢复。数据库事务可防止同一设备上多个服务实例在冷却期内重复登记；事件登记与证据文件写入仍不是单一原子事务，下一阶段将增加重启一致性核对。
+
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
 ## 快速运行

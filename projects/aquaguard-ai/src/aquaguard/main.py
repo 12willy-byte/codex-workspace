@@ -9,6 +9,7 @@ from aquaguard.audit import SQLiteEvaluationAuditRepository
 from aquaguard.config import get_settings
 from aquaguard.domain import EventStatus, RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
+from aquaguard.events import SQLiteAlarmEventRepository
 from aquaguard.protection import ValidatedProtectionAlarmGate
 from aquaguard.risk import RiskEngine
 from aquaguard.runtime import VideoRuntimeManager
@@ -39,6 +40,11 @@ service = EventService(
             settings.audit_database_path, settings.evaluation_audit_capacity
         )
         if settings.audit_database_path is not None
+        else None
+    ),
+    event_repository=(
+        SQLiteAlarmEventRepository(settings.event_database_path)
+        if settings.event_database_path is not None
         else None
     ),
 )

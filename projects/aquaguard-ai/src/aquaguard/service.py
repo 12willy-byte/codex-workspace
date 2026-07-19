@@ -12,6 +12,7 @@ from aquaguard.domain import (
     RiskFeatures,
 )
 from aquaguard.audit import EvaluationAuditRepository, InMemoryEvaluationAuditRepository
+from aquaguard.events import AlarmEventRepository, InMemoryAlarmEventRepository
 from aquaguard.risk import RiskEngine
 from aquaguard.protection import AlarmGate, AllowAllAlarmGate
 
@@ -48,6 +49,7 @@ class EventService:
         alarm_gate: AlarmGate | None = None,
         audit_capacity: int = 1000,
         audit_repository: EvaluationAuditRepository | None = None,
+        event_repository: AlarmEventRepository | None = None,
     ) -> None:
         if audit_capacity < 1:
             raise ValueError("audit_capacity must be positive")
@@ -61,7 +63,7 @@ class EventService:
         self.audit_repository = audit_repository or InMemoryEvaluationAuditRepository(
             audit_capacity
         )
-        self.events: list[AlarmEvent] = []
+        self.event_repository = event_repository or InMemoryAlarmEventRepository()
         self._last_alarm: dict[tuple[str, str], float] = {}
         self._lock = RLock()
 
@@ -139,15 +141,31 @@ class EventService:
                 features,
                 EventEvaluation(assessment, None, True, "cooldown_active"),
             )
-        event = AlarmEvent(camera_id=camera_id, track_id=track_id, area=area, assessment=assessment)
-        if self.evidence is not None:
-            self.evidence.request(
-                event,
-                now if observed_at is None else observed_at,
-                pre_seconds=self.evidence_pre_seconds,
-                post_seconds=self.evidence_post_seconds,
+        event = AlarmEvent(
+            camera_id=camera_id,
+            track_id=track_id,
+            area=area,
+            assessment=assessment,
+        )
+        if not self.event_repository.append_if_allowed(event, self.cooldown_seconds):
+            return self._complete(
+                camera_id,
+                track_id,
+                area,
+                features,
+                EventEvaluation(assessment, None, True, "cooldown_active"),
             )
-        self.events.append(event)
+        try:
+            if self.evidence is not None:
+                self.evidence.request(
+                    event,
+                    now if observed_at is None else observed_at,
+                    pre_seconds=self.evidence_pre_seconds,
+                    post_seconds=self.evidence_post_seconds,
+                )
+        except Exception:
+            self.event_repository.delete(str(event.id))
+            raise
         self._last_alarm[alarm_key] = now
         return self._complete(
             camera_id,
@@ -198,12 +216,12 @@ class EventService:
 
     def update_status(self, event_id: str, status: EventStatus) -> AlarmEvent | None:
         with self._lock:
-            for event in self.events:
-                if str(event.id) == event_id:
-                    event.status = status
-                    return event.model_copy(deep=True)
-        return None
+            return self.event_repository.update_status(event_id, status)
 
     def list_events(self) -> list[AlarmEvent]:
         with self._lock:
-            return [event.model_copy(deep=True) for event in self.events]
+            return self.event_repository.list()
+
+    @property
+    def events(self) -> list[AlarmEvent]:
+        return self.list_events()

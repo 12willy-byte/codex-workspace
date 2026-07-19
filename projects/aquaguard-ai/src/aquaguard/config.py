@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     cameras: tuple[CameraRuntimeConfig, ...] = ()
     evaluation_audit_capacity: int = Field(default=1000, ge=1)
     audit_database_path: Path | None = None
+    event_database_path: Path | None = None
 
 
 @lru_cache
