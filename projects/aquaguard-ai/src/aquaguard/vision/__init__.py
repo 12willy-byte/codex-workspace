@@ -1,6 +1,7 @@
 from aquaguard.vision.adapter import CalibratedObservationAdapter, ProvidedTrackAssociator
 from aquaguard.vision.annotation import (
     AnnotationAdjudication,
+    AnnotationProtocol,
     AnnotationReview,
     DatasetRecording,
     DatasetSplit,
@@ -41,6 +42,7 @@ from aquaguard.vision.ultralytics import UltralyticsPoseTrackAnalyzer, Ultralyti
 __all__ = [
     "BinaryRiskBenchmark",
     "AnnotationAdjudication",
+    "AnnotationProtocol",
     "AnnotationReview",
     "FrameRiskLabels",
     "CalibratedObservationAdapter",

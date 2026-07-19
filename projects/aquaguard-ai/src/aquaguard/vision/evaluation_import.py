@@ -45,6 +45,7 @@ class ReplayEvaluationImporter:
         model_version: str,
         configuration_version: str,
         annotation_version: str,
+        annotation_protocol_sha256: str,
         expected_source_sha256: str | None = None,
     ) -> ReplayEvaluationBundle:
         source_sha256 = sha256_file(source_recording_path)
@@ -87,6 +88,7 @@ class ReplayEvaluationImporter:
                 model_version=model_version,
                 configuration_version=configuration_version,
                 annotation_version=annotation_version,
+                annotation_protocol_sha256=annotation_protocol_sha256,
             ),
             geometry=calibration.geometry,
             calibrations=calibration.calibrations,

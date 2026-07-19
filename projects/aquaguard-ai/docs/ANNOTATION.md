@@ -21,9 +21,19 @@ judgment, requires an adjudication. The adjudicator must be different from both 
 record a final binary decision plus a reason. Redundant adjudication of an agreed item and
 adjudication without a matching dispute are rejected.
 
+The approved guide is stored as an `AnnotationProtocol` JSON artifact. It contains the temporal
+context, observable criteria, known non-dangerous contexts, uncertainty triggers, occlusion and
+identity policies, reviewer training requirements, privacy requirements, approver identifiers,
+and effective date. Its canonical SHA-256 changes whenever the content changes.
+
+Every review and adjudication must carry `protocol_id`, `annotation_version`, and
+`protocol_sha256`. Resolution loads the actual protocol file, recomputes its digest, and rejects
+records that do not match it.
+
 ```bash
 aquaguard-resolve-annotations \
-  reviews.jsonl adjudications.jsonl labels.jsonl resolution-summary.json
+  annotation-protocol.json reviews.jsonl adjudications.jsonl \
+  labels.jsonl resolution-summary.json
 ```
 
 The generated `labels.jsonl` is accepted by `aquaguard-import-evaluation`. The summary preserves

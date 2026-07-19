@@ -79,6 +79,7 @@ def build(importer, files, **overrides):
         "model_version": "model-v1",
         "configuration_version": "config-v1",
         "annotation_version": "annotation-v1",
+        "annotation_protocol_sha256": "a" * 64,
     }
     arguments.update(overrides)
     return importer.build(**arguments)
@@ -153,6 +154,8 @@ def test_import_command_writes_validated_bundle(tmp_path) -> None:
             "config-v1",
             "--annotation-version",
             "annotation-v1",
+            "--annotation-protocol-sha256",
+            "a" * 64,
             "--expected-source-sha256",
             sha256_file(source),
         ]

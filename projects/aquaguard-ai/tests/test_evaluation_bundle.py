@@ -54,6 +54,7 @@ def bundle() -> ReplayEvaluationBundle:
             model_version="scripted-observation-v1",
             configuration_version="risk-default-v1",
             annotation_version="review-protocol-v1",
+            annotation_protocol_sha256="a" * 64,
         ),
         calibrations=(
             CameraCalibrationRecord(

@@ -18,6 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-version", required=True)
     parser.add_argument("--configuration-version", required=True)
     parser.add_argument("--annotation-version", required=True)
+    parser.add_argument("--annotation-protocol-sha256", required=True)
     parser.add_argument("--expected-source-sha256")
     return parser
 
@@ -33,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
         model_version=args.model_version,
         configuration_version=args.configuration_version,
         annotation_version=args.annotation_version,
+        annotation_protocol_sha256=args.annotation_protocol_sha256,
         expected_source_sha256=args.expected_source_sha256,
     )
     bundle.save(args.output)

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections import defaultdict
+from datetime import date
 from enum import StrEnum
+from pathlib import Path
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from aquaguard.vision.benchmark import FrameRiskLabels, TrackRiskLabel
 
@@ -15,7 +19,83 @@ class RiskJudgment(StrEnum):
     UNCERTAIN = "uncertain"
 
 
+class AnnotationProtocol(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    protocol_id: str = Field(min_length=1)
+    annotation_version: str = Field(min_length=1)
+    effective_date: date
+    language: str = Field(min_length=1)
+    temporal_context_before_seconds: float = Field(ge=0)
+    temporal_context_after_seconds: float = Field(ge=0)
+    dangerous_observable_criteria: tuple[str, ...] = Field(min_length=1)
+    known_non_dangerous_contexts: tuple[str, ...] = Field(min_length=1)
+    uncertainty_triggers: tuple[str, ...] = Field(min_length=1)
+    occlusion_policy: str = Field(min_length=1)
+    identity_discontinuity_policy: str = Field(min_length=1)
+    reviewer_training_requirements: tuple[str, ...] = Field(min_length=1)
+    privacy_requirements: tuple[str, ...] = Field(min_length=1)
+    approved_by: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator(
+        "protocol_id",
+        "annotation_version",
+        "language",
+        "occlusion_policy",
+        "identity_discontinuity_policy",
+    )
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("annotation protocol fields must not be blank")
+        return value
+
+    @field_validator(
+        "dangerous_observable_criteria",
+        "known_non_dangerous_contexts",
+        "uncertainty_triggers",
+        "reviewer_training_requirements",
+        "privacy_requirements",
+        "approved_by",
+    )
+    @classmethod
+    def normalize_list(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value)
+        if any(not item for item in normalized):
+            raise ValueError("annotation protocol lists must not contain blank values")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("annotation protocol lists must not contain duplicates")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_temporal_context(self) -> AnnotationProtocol:
+        if self.temporal_context_before_seconds + self.temporal_context_after_seconds <= 0:
+            raise ValueError("annotation protocol must define non-zero temporal context")
+        return self
+
+    @classmethod
+    def load(cls, path: Path) -> AnnotationProtocol:
+        return cls.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def canonical_bytes(self, *, pretty: bool = False) -> bytes:
+        options = {"ensure_ascii": False, "sort_keys": True}
+        if pretty:
+            options["indent"] = 2
+        serialized = json.dumps(self.model_dump(mode="json"), **options)
+        return (serialized + "\n").encode()
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
+    def save(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.canonical_bytes(pretty=True))
+
+
 class AnnotationReview(BaseModel):
+    protocol_id: str = Field(min_length=1)
+    annotation_version: str = Field(min_length=1)
+    protocol_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     recording_id: str = Field(min_length=1)
     venue_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
@@ -24,7 +104,15 @@ class AnnotationReview(BaseModel):
     reviewer_id: str = Field(min_length=1)
     judgment: RiskJudgment
 
-    @field_validator("recording_id", "venue_id", "session_id", "track_id", "reviewer_id")
+    @field_validator(
+        "protocol_id",
+        "annotation_version",
+        "recording_id",
+        "venue_id",
+        "session_id",
+        "track_id",
+        "reviewer_id",
+    )
     @classmethod
     def normalize_identifier(cls, value: str) -> str:
         value = value.strip()
@@ -34,6 +122,9 @@ class AnnotationReview(BaseModel):
 
 
 class AnnotationAdjudication(BaseModel):
+    protocol_id: str = Field(min_length=1)
+    annotation_version: str = Field(min_length=1)
+    protocol_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     recording_id: str = Field(min_length=1)
     timestamp: float = Field(ge=0)
     track_id: str = Field(min_length=1)
@@ -41,7 +132,14 @@ class AnnotationAdjudication(BaseModel):
     dangerous: bool
     reason: str = Field(min_length=1)
 
-    @field_validator("recording_id", "track_id", "adjudicator_id", "reason")
+    @field_validator(
+        "protocol_id",
+        "annotation_version",
+        "recording_id",
+        "track_id",
+        "adjudicator_id",
+        "reason",
+    )
     @classmethod
     def normalize_text(cls, value: str) -> str:
         value = value.strip()
@@ -51,6 +149,9 @@ class AnnotationAdjudication(BaseModel):
 
 
 class ResolvedAnnotations(BaseModel):
+    protocol_id: str
+    annotation_version: str
+    protocol_sha256: str
     recording_id: str
     venue_id: str
     session_id: str
@@ -77,6 +178,15 @@ class DualReviewResolver:
         session_ids = {item.session_id for item in reviews}
         if len(recording_ids) != 1 or len(venue_ids) != 1 or len(session_ids) != 1:
             raise ValueError("reviews must belong to one recording, venue, and session")
+        protocol_references = {
+            (item.protocol_id, item.annotation_version, item.protocol_sha256) for item in reviews
+        }
+        protocol_references.update(
+            (item.protocol_id, item.annotation_version, item.protocol_sha256)
+            for item in adjudications
+        )
+        if len(protocol_references) != 1:
+            raise ValueError("reviews and adjudications must use one annotation protocol")
 
         grouped_reviews: dict[AnnotationKey, list[AnnotationReview]] = defaultdict(list)
         for review in reviews:
@@ -121,7 +231,11 @@ class DualReviewResolver:
             )
             for timestamp, labels in sorted(resolved_by_time.items())
         )
+        protocol_id, annotation_version, protocol_sha256 = next(iter(protocol_references))
         return ResolvedAnnotations(
+            protocol_id=protocol_id,
+            annotation_version=annotation_version,
+            protocol_sha256=protocol_sha256,
             recording_id=next(iter(recording_ids)),
             venue_id=next(iter(venue_ids)),
             session_id=next(iter(session_ids)),

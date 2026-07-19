@@ -4,6 +4,7 @@ from pathlib import Path
 
 from aquaguard.vision.annotation import (
     AnnotationAdjudication,
+    AnnotationProtocol,
     AnnotationReview,
     DualReviewResolver,
 )
@@ -14,6 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="aquaguard-resolve-annotations",
         description="Resolve independent reviews into benchmark labels.",
     )
+    parser.add_argument("protocol", type=Path)
     parser.add_argument("reviews", type=Path)
     parser.add_argument("adjudications", type=Path)
     parser.add_argument("labels_output", type=Path)
@@ -23,9 +25,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    protocol = AnnotationProtocol.load(args.protocol)
     reviews = _load_jsonl(args.reviews, AnnotationReview)
     adjudications = _load_jsonl(args.adjudications, AnnotationAdjudication)
     resolved = DualReviewResolver().resolve(reviews, adjudications)
+    if (
+        resolved.protocol_id != protocol.protocol_id
+        or resolved.annotation_version != protocol.annotation_version
+        or resolved.protocol_sha256 != protocol.sha256()
+    ):
+        raise ValueError("resolved annotations do not match the supplied protocol artifact")
     args.labels_output.parent.mkdir(parents=True, exist_ok=True)
     args.labels_output.write_text(
         "\n".join(frame.model_dump_json() for frame in resolved.frames) + "\n",

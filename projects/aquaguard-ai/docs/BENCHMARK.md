@@ -57,6 +57,7 @@ aquaguard-import-evaluation \
   --model-version "model-v1" \
   --configuration-version "config-v1" \
   --annotation-version "review-v1" \
+  --annotation-protocol-sha256 "<approved protocol SHA-256>" \
   --expected-source-sha256 "<64 lowercase hex characters>"
 ```
 

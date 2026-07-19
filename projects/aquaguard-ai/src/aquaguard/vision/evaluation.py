@@ -27,6 +27,7 @@ class EvaluationProvenance(BaseModel):
     model_version: str = Field(min_length=1)
     configuration_version: str = Field(min_length=1)
     annotation_version: str = Field(min_length=1)
+    annotation_protocol_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("model_version", "configuration_version", "annotation_version")
     @classmethod
