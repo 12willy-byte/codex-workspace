@@ -29,6 +29,18 @@ Every visible track that matters to the evaluation should have a label at each f
 `RiskBenchmarkManifest.load()` and `.save()` validate the schema, reject duplicate track IDs,
 and reject unordered or duplicate timestamps.
 
+For a reproducible run, use a `ReplayEvaluationBundle`. It embeds the manifest labels alongside
+pixel observations, camera homographies, pool geometry, source-recording SHA-256, and explicit
+model, configuration, and annotation versions. The generated report records a canonical SHA-256
+of the complete bundle.
+
+```bash
+aquaguard-benchmark evaluation-bundle.json benchmark-report.json
+```
+
+The command validates the entire bundle before replay. Missing camera calibration, timestamp
+misalignment, malformed probabilities, and unsupported schema versions fail closed.
+
 ## Metrics
 
 `BinaryRiskBenchmark.evaluate(replay_results, manifest)` reports:

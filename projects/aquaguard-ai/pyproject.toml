@@ -9,6 +9,9 @@ description = "Pool safety monitoring engineering baseline"
 requires-python = ">=3.11"
 dependencies = ["fastapi>=0.115,<1", "pydantic-settings>=2.7,<3", "uvicorn[standard]>=0.34,<1"]
 
+[project.scripts]
+aquaguard-benchmark = "aquaguard.benchmark_cli:main"
+
 [project.optional-dependencies]
 dev = ["httpx>=0.28,<1", "pytest>=8.3,<9", "ruff>=0.9,<1"]
 vision = ["numpy>=2,<3", "opencv-python-headless>=4.10,<5", "ultralytics>=8.3,<9"]
