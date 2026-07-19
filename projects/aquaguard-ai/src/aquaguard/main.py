@@ -94,9 +94,7 @@ operator_credential_repository = (
     if settings.operator_credential_database_path is not None
     else InMemoryOperatorCredentialRepository()
 )
-if not operator_credential_repository.list():
-    for configured_credential in settings.operator_credentials:
-        operator_credential_repository.append(configured_credential)
+operator_credential_repository.seed_if_empty(settings.operator_credentials)
 operator_credential_service = OperatorCredentialService(
     operator_credential_repository, operator_authenticator
 )
@@ -119,6 +117,7 @@ def require_operator(
     authorization: str | None,
     permission: Permission,
 ) -> AuthenticatedOperator:
+    operator_credential_service.refresh_if_changed()
     client_host = request.client.host if request.client is not None else "unknown"
     retry_after = auth_rate_limiter.retry_after(client_host)
     if retry_after is not None:

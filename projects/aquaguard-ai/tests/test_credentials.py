@@ -1,4 +1,5 @@
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -36,6 +37,59 @@ def test_sqlite_credential_repository_recovers_and_revokes(tmp_path) -> None:
     assert revoked is not None
     assert revoked.revoked is True
     assert SQLiteOperatorCredentialRepository(path).list()[0].revoked is True
+
+
+def test_sqlite_credential_version_changes_only_on_mutation(tmp_path) -> None:
+    repository = SQLiteOperatorCredentialRepository(tmp_path / "credentials.db")
+    stored = credential("admin-1", OperatorRole.ADMIN, "admin-token-value-12345678901234567890")
+
+    assert repository.version() == 0
+    repository.append(stored)
+    assert repository.version() == 1
+    repository.revoke(stored.id)
+    assert repository.version() == 2
+    repository.revoke(stored.id)
+    assert repository.version() == 2
+
+
+def test_sqlite_seed_if_empty_is_atomic_across_repository_instances(tmp_path) -> None:
+    path = tmp_path / "credentials.db"
+    first = SQLiteOperatorCredentialRepository(path)
+    second = SQLiteOperatorCredentialRepository(path)
+    admin = credential("admin-1", OperatorRole.ADMIN, "admin-token-value-12345678901234567890")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(lambda repository: repository.seed_if_empty((admin,)), (first, second))
+        )
+
+    assert sorted(results) == [False, True]
+    assert first.version() == 1
+    assert [item.id for item in first.list()] == [admin.id]
+
+
+def test_sqlite_services_refresh_credentials_changed_by_another_process(tmp_path) -> None:
+    path = tmp_path / "credentials.db"
+    admin = credential("admin-1", OperatorRole.ADMIN, "admin-token-value-12345678901234567890")
+    first_repository = SQLiteOperatorCredentialRepository(path)
+    second_repository = SQLiteOperatorCredentialRepository(path)
+    assert first_repository.seed_if_empty((admin,)) is True
+    first_authenticator = OperatorAuthenticator()
+    second_authenticator = OperatorAuthenticator()
+    first_service = OperatorCredentialService(first_repository, first_authenticator)
+    second_service = OperatorCredentialService(second_repository, second_authenticator)
+    viewer_token = "viewer-token-value-12345678901234567890"
+    viewer = credential("viewer-1", OperatorRole.VIEWER, viewer_token)
+
+    first_service.create(viewer)
+    assert second_authenticator.authenticate(f"Bearer {viewer_token}") is None
+    assert second_service.refresh_if_changed() is True
+    assert second_authenticator.authenticate(f"Bearer {viewer_token}") is not None
+    assert second_service.refresh_if_changed() is False
+
+    first_service.revoke(viewer.id, admin.id)
+    assert second_service.refresh_if_changed() is True
+    assert second_authenticator.authenticate(f"Bearer {viewer_token}") is None
 
 
 def test_credential_service_refreshes_authenticator_without_restart() -> None:
