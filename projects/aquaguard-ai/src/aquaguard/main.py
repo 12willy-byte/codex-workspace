@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Header, HTTPException
+from math import ceil
+
+from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from aquaguard import __version__
@@ -25,6 +27,13 @@ from aquaguard.remediation import (
 )
 from aquaguard.risk import RiskEngine
 from aquaguard.runtime import VideoRuntimeManager
+from aquaguard.security import (
+    AuthenticationFailureRateLimiter,
+    InMemorySecurityAuditRepository,
+    SecurityAudit,
+    SecurityOutcome,
+    SQLiteSecurityAuditRepository,
+)
 from aquaguard.service import EventService
 from aquaguard.world import CameraObservation, TemporalFusionCoordinator, WorldModelPipeline
 
@@ -71,20 +80,68 @@ remediation_service = EvidenceRemediationService(
     ),
 )
 operator_authenticator = OperatorAuthenticator(settings.operator_credentials)
+security_audit_repository = (
+    SQLiteSecurityAuditRepository(
+        settings.security_audit_database_path, settings.security_audit_capacity
+    )
+    if settings.security_audit_database_path is not None
+    else InMemorySecurityAuditRepository(settings.security_audit_capacity)
+)
+auth_rate_limiter = AuthenticationFailureRateLimiter(
+    settings.auth_failure_limit,
+    settings.auth_failure_window_seconds,
+    settings.auth_rate_limit_max_clients,
+)
 
 
 def require_operator(
+    request: Request,
     authorization: str | None,
     permission: Permission,
 ) -> AuthenticatedOperator:
+    client_host = request.client.host if request.client is not None else "unknown"
+    retry_after = auth_rate_limiter.retry_after(client_host)
+    if retry_after is not None:
+        security_audit_repository.append(
+            SecurityAudit(
+                outcome=SecurityOutcome.RATE_LIMITED,
+                permission=permission,
+                path=request.url.path,
+                client_host=client_host,
+            )
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="too many authentication failures",
+            headers={"Retry-After": str(max(1, ceil(retry_after)))},
+        )
     operator = operator_authenticator.authenticate(authorization)
     if operator is None:
+        auth_rate_limiter.record_failure(client_host)
+        security_audit_repository.append(
+            SecurityAudit(
+                outcome=SecurityOutcome.AUTHENTICATION_FAILED,
+                permission=permission,
+                path=request.url.path,
+                client_host=client_host,
+            )
+        )
         raise HTTPException(
             status_code=401,
             detail="valid operator bearer token required",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not is_authorized(operator, permission):
+        security_audit_repository.append(
+            SecurityAudit(
+                outcome=SecurityOutcome.AUTHORIZATION_DENIED,
+                permission=permission,
+                path=request.url.path,
+                client_host=client_host,
+                operator=operator.username,
+                role=operator.role,
+            )
+        )
         raise HTTPException(status_code=403, detail="operator role is not permitted")
     return operator
 
@@ -148,24 +205,26 @@ def health() -> dict[str, str]:
 
 @app.get("/api/v1/video-runtimes")
 def video_runtime_statuses(
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> list[dict]:
-    require_operator(authorization, Permission.VIEW_OPERATIONS)
+    require_operator(request, authorization, Permission.VIEW_OPERATIONS)
     return video_manager.statuses()
 
 
 @app.post("/api/v1/evaluations")
 def evaluate(
-    request: EvaluationRequest,
+    payload: EvaluationRequest,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict:
-    require_operator(authorization, Permission.INGEST_OBSERVATIONS)
+    require_operator(request, authorization, Permission.INGEST_OBSERVATIONS)
     result = service.evaluate_decision(
-        request.camera_id,
-        request.track_id,
-        request.area,
-        request.features,
-        observed_at=request.observed_at,
+        payload.camera_id,
+        payload.track_id,
+        payload.area,
+        payload.features,
+        observed_at=payload.observed_at,
     )
     return {
         "assessment": result.assessment,
@@ -176,19 +235,20 @@ def evaluate(
 
 
 @app.get("/api/v1/events")
-def list_events(authorization: str | None = Header(default=None)) -> list:
-    require_operator(authorization, Permission.VIEW_OPERATIONS)
+def list_events(request: Request, authorization: str | None = Header(default=None)) -> list:
+    require_operator(request, authorization, Permission.VIEW_OPERATIONS)
     return service.list_events()
 
 
 @app.get("/api/v1/evaluation-audits")
 def list_evaluation_audits(
+    request: Request,
     limit: int | None = None,
     camera_id: str | None = None,
     suppression_reason: str | None = None,
     authorization: str | None = Header(default=None),
 ) -> list:
-    require_operator(authorization, Permission.VIEW_AUDIT)
+    require_operator(request, authorization, Permission.VIEW_AUDIT)
     try:
         return service.list_audits(
             limit=limit,
@@ -202,11 +262,12 @@ def list_evaluation_audits(
 @app.patch("/api/v1/events/{event_id}")
 def update_event(
     event_id: str,
-    request: StatusRequest,
+    payload: StatusRequest,
+    request: Request,
     authorization: str | None = Header(default=None),
 ):
-    require_operator(authorization, Permission.MANAGE_INCIDENTS)
-    event = service.update_status(event_id, request.status)
+    require_operator(request, authorization, Permission.MANAGE_INCIDENTS)
+    event = service.update_status(event_id, payload.status)
     if event is None:
         raise HTTPException(status_code=404, detail="event not found")
     return event
@@ -215,9 +276,10 @@ def update_event(
 @app.get("/api/v1/events/{event_id}/evidence")
 def evidence_status(
     event_id: str,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict:
-    require_operator(authorization, Permission.VIEW_OPERATIONS)
+    require_operator(request, authorization, Permission.VIEW_OPERATIONS)
     status = evidence_service.status(event_id)
     if status["status"] == "missing":
         raise HTTPException(status_code=404, detail="evidence not found")
@@ -226,9 +288,11 @@ def evidence_status(
 
 @app.get("/api/v1/system/evidence-consistency")
 def evidence_consistency(
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict:
     require_operator(
+        request,
         authorization,
         Permission.VIEW_AUDIT,
     )
@@ -237,21 +301,23 @@ def evidence_consistency(
 
 @app.post("/api/v1/system/evidence-remediations")
 def remediate_evidence(
-    request: RemediationRequest,
+    payload: RemediationRequest,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict:
     if not settings.remediation_enabled:
         raise HTTPException(status_code=503, detail="evidence remediation is disabled")
     operator = require_operator(
+        request,
         authorization,
         Permission.REMEDIATE_EVIDENCE,
     )
     try:
         return remediation_service.execute(
-            request.target_id,
-            request.action,
+            payload.target_id,
+            payload.action,
             operator.username,
-            request.reason,
+            payload.reason,
         ).model_dump(mode="json")
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -259,23 +325,40 @@ def remediate_evidence(
 
 @app.get("/api/v1/system/evidence-remediations")
 def list_evidence_remediations(
+    request: Request,
     target_id: str | None = None,
     authorization: str | None = Header(default=None),
 ) -> list:
     require_operator(
+        request,
         authorization,
         Permission.VIEW_AUDIT,
     )
     return remediation_service.list(target_id=target_id)
 
 
+@app.get("/api/v1/security-audits")
+def list_security_audits(
+    request: Request,
+    limit: int | None = None,
+    outcome: SecurityOutcome | None = None,
+    authorization: str | None = Header(default=None),
+) -> list:
+    require_operator(request, authorization, Permission.VIEW_SECURITY_AUDIT)
+    try:
+        return security_audit_repository.list(limit=limit, outcome=outcome)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.post("/api/v1/world-model/frames")
 def process_world_frame(
-    request: WorldFrameRequest,
+    payload: WorldFrameRequest,
+    request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict:
-    require_operator(authorization, Permission.INGEST_OBSERVATIONS)
-    observations = [CameraObservation(**item.model_dump()) for item in request.observations]
+    require_operator(request, authorization, Permission.INGEST_OBSERVATIONS)
+    observations = [CameraObservation(**item.model_dump()) for item in payload.observations]
     try:
         return world_model.process(observations)
     except ValueError as exc:

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     remediation_database_path: Path | None = None
     remediation_enabled: bool = False
     operator_credentials: tuple[OperatorCredential, ...] = ()
+    security_audit_capacity: int = Field(default=1000, ge=1)
+    security_audit_database_path: Path | None = None
+    auth_failure_limit: int = Field(default=10, ge=1)
+    auth_failure_window_seconds: float = Field(default=60, gt=0)
+    auth_rate_limit_max_clients: int = Field(default=10_000, ge=1)
 
 
 @lru_cache

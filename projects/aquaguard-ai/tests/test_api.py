@@ -5,9 +5,11 @@ from fastapi.testclient import TestClient
 from aquaguard.auth import OperatorCredential, OperatorRole
 from aquaguard.main import (
     app,
+    auth_rate_limiter,
     evidence_service,
     operator_authenticator,
     service,
+    security_audit_repository,
     settings,
 )
 
@@ -39,6 +41,32 @@ def test_operational_api_rejects_anonymous_requests() -> None:
     response = client.get("/api/v1/events", headers={"Authorization": ""})
 
     assert response.status_code == 401
+
+
+def test_admin_can_query_authentication_failure_audit() -> None:
+    response = client.get(
+        "/api/v1/security-audits",
+        params={"outcome": "authentication_failed", "limit": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()[-1]["outcome"] == "authentication_failed"
+    assert "token" not in response.text.lower()
+    assert security_audit_repository.list()[-1].client_host == "testclient"
+
+
+def test_repeated_authentication_failures_are_rate_limited(monkeypatch) -> None:
+    auth_rate_limiter._failures.clear()
+    monkeypatch.setattr(auth_rate_limiter, "max_failures", 1)
+
+    first = client.get("/api/v1/events", headers={"Authorization": ""})
+    second = client.get("/api/v1/events", headers={"Authorization": ""})
+
+    assert first.status_code == 401
+    assert second.status_code == 429
+    assert int(second.headers["Retry-After"]) >= 1
+    assert security_audit_repository.list()[-1].outcome == "rate_limited"
+    auth_rate_limiter._failures.clear()
 
 
 def test_evaluation_validation() -> None:

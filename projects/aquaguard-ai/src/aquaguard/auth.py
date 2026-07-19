@@ -19,6 +19,7 @@ class Permission(StrEnum):
     VIEW_OPERATIONS = "view_operations"
     MANAGE_INCIDENTS = "manage_incidents"
     VIEW_AUDIT = "view_audit"
+    VIEW_SECURITY_AUDIT = "view_security_audit"
     REMEDIATE_EVIDENCE = "remediate_evidence"
     INGEST_OBSERVATIONS = "ingest_observations"
 
