@@ -42,6 +42,15 @@ class EventEvidenceService:
                 "starts_at": window.starts_at,
                 "ends_at": window.ends_at,
             }
+        clip = self.recorder.completed.get(event_id)
+        if clip is not None:
+            return {
+                "event_id": event_id,
+                "status": "ready",
+                "camera_id": clip.camera_id,
+                "frame_count": len(clip.frames),
+                "complete": clip.complete,
+            }
         return {"event_id": event_id, "status": "missing"}
 
     def request(

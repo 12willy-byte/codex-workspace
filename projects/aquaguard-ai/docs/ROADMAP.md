@@ -34,6 +34,7 @@
 - [x] 可选 SQLite 评估审核持久化、恢复、过滤和容量裁剪
 - [x] 风险确认、资格、冷却、证据和事件登记的并发串行化
 - [x] 可选 SQLite 正式报警事件仓库、重启恢复、状态持久化和跨实例冷却事务
+- [x] 事件与证据的只读一致性报告（pending/ready/stored/missing/integrity_failed/orphaned）
 - [ ] 头部真实沉水分割/时序模型与经数据验证的挣扎分类
 - [ ] 每个摄像头的泳池 ROI 和水面标定
 - [ ] PostgreSQL 多节点正式报警事件与证据索引（事件与评估审核已有 SQLite baseline）

@@ -18,7 +18,20 @@ def test_video_runtime_status_api() -> None:
 
 
 def test_evaluation_validation() -> None:
-    response = client.post("/api/v1/evaluations", json={"camera_id": "C01", "track_id": "T01", "area": "child-pool", "features": {"head_underwater": 2, "vertical_body": 0, "abnormal_motion": 0, "temporal_risk": 0}})
+    response = client.post(
+        "/api/v1/evaluations",
+        json={
+            "camera_id": "C01",
+            "track_id": "T01",
+            "area": "child-pool",
+            "features": {
+                "head_underwater": 2,
+                "vertical_body": 0,
+                "abnormal_motion": 0,
+                "temporal_risk": 0,
+            },
+        },
+    )
     assert response.status_code == 422
 
 
@@ -57,6 +70,15 @@ def test_evidence_status_api_reports_pending_and_missing() -> None:
     assert response.json()["status"] == "pending"
     assert response.json()["starts_at"] == 8
     assert missing.status_code == 404
+
+
+def test_evidence_consistency_api() -> None:
+    response = client.get("/api/v1/system/evidence-consistency")
+
+    assert response.status_code == 200
+    assert "events" in response.json()
+    assert "orphaned_evidence_ids" in response.json()
+    assert "counts" in response.json()
 
 
 def test_confirmed_evaluation_is_suppressed_without_validated_camera() -> None:

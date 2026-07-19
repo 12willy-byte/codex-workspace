@@ -7,6 +7,7 @@ from aquaguard import __version__
 from aquaguard.assembly import ConfiguredFrameAnalyzerFactory, VideoRuntimeAssembler
 from aquaguard.audit import SQLiteEvaluationAuditRepository
 from aquaguard.config import get_settings
+from aquaguard.consistency import EvidenceConsistencyService
 from aquaguard.domain import EventStatus, RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
 from aquaguard.events import SQLiteAlarmEventRepository
@@ -48,6 +49,7 @@ service = EventService(
         else None
     ),
 )
+consistency_service = EvidenceConsistencyService(service.event_repository, evidence_service)
 
 
 @asynccontextmanager
@@ -158,6 +160,11 @@ def evidence_status(event_id: str) -> dict:
     if status["status"] == "missing":
         raise HTTPException(status_code=404, detail="evidence not found")
     return status
+
+
+@app.get("/api/v1/system/evidence-consistency")
+def evidence_consistency() -> dict:
+    return consistency_service.inspect().model_dump(mode="json")
 
 
 @app.post("/api/v1/world-model/frames")
