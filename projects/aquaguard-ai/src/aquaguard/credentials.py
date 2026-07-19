@@ -34,7 +34,9 @@ class OperatorCredentialView(BaseModel):
 class OperatorCredentialRepository(Protocol):
     def append(self, credential: OperatorCredential) -> None: ...
 
-    def revoke(self, credential_id: UUID) -> OperatorCredential | None: ...
+    def revoke_managed(
+        self, credential_id: UUID, actor_credential_id: UUID, now: datetime
+    ) -> OperatorCredential | None: ...
 
     def seed_if_empty(self, credentials: tuple[OperatorCredential, ...]) -> bool: ...
 
@@ -59,16 +61,17 @@ class InMemoryOperatorCredentialRepository:
             self._credentials.append(credential.model_copy(deep=True))
             self._version += 1
 
-    def revoke(self, credential_id: UUID) -> OperatorCredential | None:
+    def revoke_managed(
+        self, credential_id: UUID, actor_credential_id: UUID, now: datetime
+    ) -> OperatorCredential | None:
         with self._lock:
-            for credential in self._credentials:
-                if credential.id == credential_id:
-                    if credential.revoked:
-                        return credential.model_copy(deep=True)
-                    credential.revoked = True
-                    self._version += 1
-                    return credential.model_copy(deep=True)
-        return None
+            target = next((item for item in self._credentials if item.id == credential_id), None)
+            _validate_managed_revocation(target, actor_credential_id, now, self._credentials)
+            if target is None:
+                return None
+            target.revoked = True
+            self._version += 1
+            return target.model_copy(deep=True)
 
     def seed_if_empty(self, credentials: tuple[OperatorCredential, ...]) -> bool:
         with self._lock:
@@ -168,30 +171,30 @@ class SQLiteOperatorCredentialRepository:
         finally:
             connection.close()
 
-    def revoke(self, credential_id: UUID) -> OperatorCredential | None:
+    def revoke_managed(
+        self, credential_id: UUID, actor_credential_id: UUID, now: datetime
+    ) -> OperatorCredential | None:
         connection = self._connect()
         try:
             with self._lock:
                 connection.execute("BEGIN IMMEDIATE")
-                row = connection.execute(
-                    "SELECT payload FROM operator_credentials WHERE credential_id = ?",
-                    (str(credential_id),),
-                ).fetchone()
-                if row is None:
+                rows = connection.execute(
+                    "SELECT payload FROM operator_credentials ORDER BY sequence"
+                ).fetchall()
+                credentials = [OperatorCredential.model_validate_json(row[0]) for row in rows]
+                target = next((item for item in credentials if item.id == credential_id), None)
+                _validate_managed_revocation(target, actor_credential_id, now, credentials)
+                if target is None:
                     connection.rollback()
                     return None
-                credential = OperatorCredential.model_validate_json(row[0])
-                if credential.revoked:
-                    connection.rollback()
-                    return credential.model_copy(deep=True)
-                credential.revoked = True
+                target.revoked = True
                 connection.execute(
                     "UPDATE operator_credentials SET payload = ? WHERE credential_id = ?",
-                    (credential.model_dump_json(), str(credential_id)),
+                    (target.model_dump_json(), str(credential_id)),
                 )
                 self._increment_version(connection)
                 connection.commit()
-                return credential.model_copy(deep=True)
+                return target.model_copy(deep=True)
         except Exception:
             connection.rollback()
             raise
@@ -308,23 +311,10 @@ class OperatorCredentialService:
         self, credential_id: UUID, actor_credential_id: UUID
     ) -> OperatorCredentialView | None:
         with self._lock:
-            credentials = self.repository.list()
-            target = next((item for item in credentials if item.id == credential_id), None)
-            if target is None:
-                return None
-            if target.id == actor_credential_id:
-                raise ValueError("operators cannot revoke their current credential")
-            if target.revoked:
-                raise ValueError("credential is already revoked")
-            if target.role == OperatorRole.ADMIN and self._is_active(target):
-                active_admins = [
-                    item
-                    for item in credentials
-                    if item.role == OperatorRole.ADMIN and self._is_active(item)
-                ]
-                if len(active_admins) <= 1:
-                    raise ValueError("cannot revoke the last active admin credential")
-            revoked = self.repository.revoke(credential_id)
+            now = self.clock()
+            if now.tzinfo is None:
+                raise ValueError("credential clock must return a timezone-aware datetime")
+            revoked = self.repository.revoke_managed(credential_id, actor_credential_id, now)
             if revoked is None:
                 return None
             self._refresh()
@@ -353,6 +343,29 @@ class OperatorCredentialService:
         now = self.clock()
         if now.tzinfo is None:
             raise ValueError("credential clock must return a timezone-aware datetime")
-        return not credential.revoked and (
-            credential.expires_at is None or now < credential.expires_at
-        )
+        return _is_active_at(credential, now)
+
+
+def _is_active_at(credential: OperatorCredential, now: datetime) -> bool:
+    return not credential.revoked and (credential.expires_at is None or now < credential.expires_at)
+
+
+def _validate_managed_revocation(
+    target: OperatorCredential | None,
+    actor_credential_id: UUID,
+    now: datetime,
+    credentials: list[OperatorCredential],
+) -> None:
+    if target is None:
+        return
+    if target.id == actor_credential_id:
+        raise ValueError("operators cannot revoke their current credential")
+    if target.revoked:
+        raise ValueError("credential is already revoked")
+    if target.role != OperatorRole.ADMIN or not _is_active_at(target, now):
+        return
+    active_admins = [
+        item for item in credentials if item.role == OperatorRole.ADMIN and _is_active_at(item, now)
+    ]
+    if len(active_admins) <= 1:
+        raise ValueError("cannot revoke the last active admin credential")

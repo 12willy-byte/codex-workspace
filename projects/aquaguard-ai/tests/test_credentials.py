@@ -28,11 +28,13 @@ def credential(
 def test_sqlite_credential_repository_recovers_and_revokes(tmp_path) -> None:
     path = tmp_path / "credentials.db"
     repository = SQLiteOperatorCredentialRepository(path)
-    stored = credential("admin-1", OperatorRole.ADMIN, "admin-token-value-12345678901234567890")
+    stored = credential("viewer-1", OperatorRole.VIEWER, "viewer-token-value-12345678901234567890")
     repository.append(stored)
 
     recovered = SQLiteOperatorCredentialRepository(path)
-    revoked = recovered.revoke(stored.id)
+    revoked = recovered.revoke_managed(
+        stored.id, uuid4(), datetime(2026, 7, 19, tzinfo=timezone.utc)
+    )
 
     assert revoked is not None
     assert revoked.revoked is True
@@ -41,14 +43,17 @@ def test_sqlite_credential_repository_recovers_and_revokes(tmp_path) -> None:
 
 def test_sqlite_credential_version_changes_only_on_mutation(tmp_path) -> None:
     repository = SQLiteOperatorCredentialRepository(tmp_path / "credentials.db")
-    stored = credential("admin-1", OperatorRole.ADMIN, "admin-token-value-12345678901234567890")
+    stored = credential("viewer-1", OperatorRole.VIEWER, "viewer-token-value-12345678901234567890")
+    now = datetime(2026, 7, 19, tzinfo=timezone.utc)
+    actor_id = uuid4()
 
     assert repository.version() == 0
     repository.append(stored)
     assert repository.version() == 1
-    repository.revoke(stored.id)
+    repository.revoke_managed(stored.id, actor_id, now)
     assert repository.version() == 2
-    repository.revoke(stored.id)
+    with pytest.raises(ValueError, match="already revoked"):
+        repository.revoke_managed(stored.id, actor_id, now)
     assert repository.version() == 2
 
 
@@ -90,6 +95,45 @@ def test_sqlite_services_refresh_credentials_changed_by_another_process(tmp_path
     first_service.revoke(viewer.id, admin.id)
     assert second_service.refresh_if_changed() is True
     assert second_authenticator.authenticate(f"Bearer {viewer_token}") is None
+
+
+def test_concurrent_sqlite_admin_revocation_preserves_one_active_admin(tmp_path) -> None:
+    path = tmp_path / "credentials.db"
+    now = datetime(2026, 7, 19, tzinfo=timezone.utc)
+    first = credential("admin-1", OperatorRole.ADMIN, "admin-token-value-12345678901234567890")
+    second = credential("admin-2", OperatorRole.ADMIN, "second-token-value-1234567890123456789")
+    first_repository = SQLiteOperatorCredentialRepository(path)
+    second_repository = SQLiteOperatorCredentialRepository(path)
+    assert first_repository.seed_if_empty((first, second)) is True
+    first_service = OperatorCredentialService(
+        first_repository, OperatorAuthenticator(), clock=lambda: now
+    )
+    second_service = OperatorCredentialService(
+        second_repository, OperatorAuthenticator(), clock=lambda: now
+    )
+
+    def revoke_other(service, target_id, actor_id):
+        try:
+            service.revoke(target_id, actor_id)
+            return "revoked"
+        except ValueError as exc:
+            return str(exc)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = (
+            executor.submit(revoke_other, first_service, second.id, first.id),
+            executor.submit(revoke_other, second_service, first.id, second.id),
+        )
+        results = [future.result() for future in futures]
+
+    assert results.count("revoked") == 1
+    assert results.count("cannot revoke the last active admin credential") == 1
+    active_admins = [
+        item
+        for item in SQLiteOperatorCredentialRepository(path).list()
+        if item.role == OperatorRole.ADMIN and not item.revoked
+    ]
+    assert len(active_admins) == 1
 
 
 def test_credential_service_refreshes_authenticator_without_restart() -> None:
