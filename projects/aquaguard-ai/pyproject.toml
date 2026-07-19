@@ -13,6 +13,8 @@ dependencies = ["fastapi>=0.115,<1", "pydantic-settings>=2.7,<3", "uvicorn[stand
 aquaguard-benchmark = "aquaguard.benchmark_cli:main"
 aquaguard-import-evaluation = "aquaguard.evaluation_import_cli:main"
 aquaguard-resolve-annotations = "aquaguard.annotation_cli:main"
+aquaguard-qualify-reviewer = "aquaguard.annotation_quality_cli:qualify_main"
+aquaguard-annotation-agreement = "aquaguard.annotation_quality_cli:agreement_main"
 
 [project.optional-dependencies]
 dev = ["httpx>=0.28,<1", "pytest>=8.3,<9", "ruff>=0.9,<1"]

@@ -65,6 +65,41 @@ position, lighting, background, and recurring patrons from leaking across partit
 release metadata must preserve the seed and assignments. Threshold tuning is allowed only on
 training and validation data; the test partition stays sealed until final evaluation.
 
+## Reviewer qualification
+
+A `ReviewerCalibrationSet` is bound to one annotation protocol and has its own canonical SHA-256.
+The set must contain approved dangerous and safe gold items. A submission must answer every item
+exactly once and bind the same protocol and calibration-set digests.
+
+Qualification policy thresholds are explicit project governance inputs, not defaults claimed by
+this repository. The report separates:
+
+- overall accuracy;
+- dangerous recall;
+- safe specificity;
+- uncertain-response fraction;
+- minimum total, dangerous, and safe item coverage.
+
+```bash
+aquaguard-qualify-reviewer \
+  calibration-set.json reviewer-submission.json qualification-policy.json report.json
+```
+
+The command exits with status `2` when the reviewer does not pass, while still writing the failure
+report and every failed requirement. Only pseudonymous reviewer IDs belong in these artifacts.
+
+## Agreement monitoring
+
+For batches completed by the same two reviewers, run:
+
+```bash
+aquaguard-annotation-agreement reviews.jsonl agreement-report.json
+```
+
+The report includes raw agreement, expected chance agreement, Cohen's kappa, disputes, and items
+where either reviewer selected `uncertain`. Cohen's kappa is rejected when the batch does not use
+the same two reviewers on every item; it must not be misreported for rotating reviewer pools.
+
 ## Remaining release gates
 
 - reviewer qualification and agreement statistics;
