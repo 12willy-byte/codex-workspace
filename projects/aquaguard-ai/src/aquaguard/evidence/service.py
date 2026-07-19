@@ -74,7 +74,10 @@ class EventEvidenceService:
         return [self._persist(clip) for clip in clips]
 
     def force_persist(self, event_id: str) -> StoredEvidence:
-        return self._persist(self.recorder.force_finalize(event_id))
+        clip = self.recorder.completed.get(event_id)
+        if clip is None:
+            clip = self.recorder.force_finalize(event_id)
+        return self._persist(clip)
 
     def cleanup(self, policy: EvidenceRetentionPolicy, now: float) -> CleanupPlan:
         plan = policy.plan(list(self.artifacts.values()), now)

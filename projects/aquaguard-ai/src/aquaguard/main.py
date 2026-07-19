@@ -12,6 +12,11 @@ from aquaguard.domain import EventStatus, RiskFeatures
 from aquaguard.evidence import EvidenceRecorder, EventEvidenceService, FileEvidenceRepository
 from aquaguard.events import SQLiteAlarmEventRepository
 from aquaguard.protection import ValidatedProtectionAlarmGate
+from aquaguard.remediation import (
+    EvidenceRemediationService,
+    RemediationAction,
+    SQLiteRemediationRepository,
+)
 from aquaguard.risk import RiskEngine
 from aquaguard.runtime import VideoRuntimeManager
 from aquaguard.service import EventService
@@ -50,6 +55,15 @@ service = EventService(
     ),
 )
 consistency_service = EvidenceConsistencyService(service.event_repository, evidence_service)
+remediation_service = EvidenceRemediationService(
+    consistency_service,
+    evidence_service,
+    (
+        SQLiteRemediationRepository(settings.remediation_database_path)
+        if settings.remediation_database_path is not None
+        else None
+    ),
+)
 
 
 @asynccontextmanager
@@ -74,6 +88,13 @@ class EvaluationRequest(BaseModel):
 
 class StatusRequest(BaseModel):
     status: EventStatus
+
+
+class RemediationRequest(BaseModel):
+    target_id: str = Field(min_length=1)
+    action: RemediationAction
+    operator: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
 
 
 class ObservationRequest(BaseModel):
@@ -165,6 +186,26 @@ def evidence_status(event_id: str) -> dict:
 @app.get("/api/v1/system/evidence-consistency")
 def evidence_consistency() -> dict:
     return consistency_service.inspect().model_dump(mode="json")
+
+
+@app.post("/api/v1/system/evidence-remediations")
+def remediate_evidence(request: RemediationRequest) -> dict:
+    if not settings.remediation_enabled:
+        raise HTTPException(status_code=503, detail="evidence remediation is disabled")
+    try:
+        return remediation_service.execute(
+            request.target_id,
+            request.action,
+            request.operator,
+            request.reason,
+        ).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/system/evidence-remediations")
+def list_evidence_remediations(target_id: str | None = None) -> list:
+    return remediation_service.list(target_id=target_id)
 
 
 @app.post("/api/v1/world-model/frames")

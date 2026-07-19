@@ -39,6 +39,8 @@ Pose 适配器还输出跨帧 `wrist_motion` 及其置信度；关键点遮挡�
 
 `GET /api/v1/system/evidence-consistency` 提供只读一致性报告，区分待采集、待持久化、已存储、缺失、校验失败和无对应事件的孤立证据。报告只诊断，不会自动删除或伪造修复生命安全事件记录。
 
+证据处置支持把 `ready` 片段写盘，以及对缺失、孤立和完整性失败进行带操作人和原因的审计记录；失败尝试同样留下结果。处置不会删除证据或补造事件。写 API 默认关闭，只有设置 `AQUAGUARD_REMEDIATION_ENABLED=true` 才开放；在用户认证和角色权限完成前，不应在生产环境启用。设置 `AQUAGUARD_REMEDIATION_DATABASE_PATH` 可将处置审计保存到 SQLite 并在重启后恢复。
+
 项目范围、真实进度和统一里程碑以 [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) 为唯一依据。
 
 ## 快速运行

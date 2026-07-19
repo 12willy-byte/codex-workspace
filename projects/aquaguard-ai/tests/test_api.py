@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from aquaguard.main import app, evidence_service, service
+from aquaguard.main import app, evidence_service, service, settings
 
 client = TestClient(app)
 
@@ -79,6 +79,45 @@ def test_evidence_consistency_api() -> None:
     assert "events" in response.json()
     assert "orphaned_evidence_ids" in response.json()
     assert "counts" in response.json()
+
+
+def test_evidence_remediation_api_is_disabled_without_explicit_configuration() -> None:
+    response = client.post(
+        "/api/v1/system/evidence-remediations",
+        json={
+            "target_id": "unknown-event",
+            "action": "persist_ready",
+            "operator": "operator-1",
+            "reason": "test invalid request",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "evidence remediation is disabled"
+
+
+def test_enabled_evidence_remediation_api_validates_action_state(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "remediation_enabled", True)
+
+    response = client.post(
+        "/api/v1/system/evidence-remediations",
+        json={
+            "target_id": "unknown-event",
+            "action": "persist_ready",
+            "operator": "operator-1",
+            "reason": "test invalid request",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "requires status ready, got unknown" in response.json()["detail"]
+
+
+def test_evidence_remediation_audit_api() -> None:
+    response = client.get("/api/v1/system/evidence-remediations")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
 
 
 def test_confirmed_evaluation_is_suppressed_without_validated_camera() -> None:

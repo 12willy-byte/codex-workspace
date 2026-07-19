@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     evaluation_audit_capacity: int = Field(default=1000, ge=1)
     audit_database_path: Path | None = None
     event_database_path: Path | None = None
+    remediation_database_path: Path | None = None
+    remediation_enabled: bool = False
 
 
 @lru_cache
