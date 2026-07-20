@@ -23,6 +23,8 @@ from aquaguard.vision.annotation_quality import (
     ReviewerQualificationReport,
 )
 from aquaguard.vision.annotation_renewal import (
+    QualificationHistoryVerificationReport,
+    QualificationHistoryVerifier,
     QualificationRenewalPolicy,
     ReviewerQualificationRenewalIssuer,
     ReviewerRetrainingCompletion,
@@ -118,6 +120,8 @@ __all__ = [
     "ReviewerQualificationRecord",
     "ReviewerRetrainingCompletion",
     "QualificationRenewalPolicy",
+    "QualificationHistoryVerificationReport",
+    "QualificationHistoryVerifier",
     "ScriptedFrameAnalyzer",
     "TrackRiskLabel",
     "UltralyticsTrackAnalyzer",

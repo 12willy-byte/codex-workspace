@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from aquaguard.annotation_renewal_cli import main
+from aquaguard.annotation_history_cli import main as history_main
 from aquaguard.vision import (
     CalibrationGoldItem,
     CalibrationResponse,
     QualificationRenewalPolicy,
+    QualificationHistoryVerifier,
     ReviewerCalibrationSet,
     ReviewerCalibrationSubmission,
     ReviewerQualificationEvaluator,
@@ -164,6 +166,18 @@ def test_renewal_rejects_mismatched_or_stale_retraining() -> None:
             renewed_at=NOW + timedelta(hours=2),
             expires_at=NOW + timedelta(days=90),
         )
+    with pytest.raises(ValueError, match="cannot overlap"):
+        issuer.issue(
+            predecessor.model_copy(update={"expires_at": NOW + timedelta(days=1)}),
+            retraining(),
+            source,
+            candidate,
+            policy,
+            report,
+            QualificationRenewalPolicy(allow_same_calibration_set=False),
+            renewed_at=NOW + timedelta(hours=2),
+            expires_at=NOW + timedelta(days=90),
+        )
 
 
 def test_renewal_policy_can_forbid_reusing_calibration_set() -> None:
@@ -305,3 +319,82 @@ def test_renewal_command_does_not_issue_record_after_failed_recalibration(tmp_pa
     assert exit_code == 2
     assert json.loads(report_path.read_text(encoding="utf-8"))["qualified"] is False
     assert record_path.exists() is False
+
+
+def renewed_chain():
+    predecessor = initial_record()
+    completion = retraining()
+    source = calibration_set("2.0.0")
+    candidate = submission(source)
+    policy = qualification_policy()
+    report = ReviewerQualificationEvaluator().evaluate(source, candidate, policy)
+    renewed = ReviewerQualificationRenewalIssuer().issue(
+        predecessor,
+        completion,
+        source,
+        candidate,
+        policy,
+        report,
+        QualificationRenewalPolicy(allow_same_calibration_set=False),
+        renewed_at=NOW + timedelta(hours=2),
+        expires_at=NOW + timedelta(days=90),
+    )
+    return predecessor, completion, renewed
+
+
+def test_history_verifier_accepts_complete_append_only_chain() -> None:
+    predecessor, completion, renewed = renewed_chain()
+
+    report = QualificationHistoryVerifier().verify(
+        [predecessor, renewed],
+        [completion],
+        checked_at=NOW + timedelta(days=1),
+    )
+
+    assert report.valid is True
+    assert report.failures == ()
+    assert report.active_qualification_sha256 == renewed.sha256()
+
+
+def test_history_verifier_reports_broken_links_and_orphan_evidence() -> None:
+    predecessor, completion, renewed = renewed_chain()
+    broken = renewed.model_copy(update={"predecessor_qualification_sha256": "d" * 64})
+    orphan = retraining(completion_id="orphan", completed_at=NOW + timedelta(hours=3))
+
+    report = QualificationHistoryVerifier().verify(
+        [predecessor, broken],
+        [completion, orphan],
+        checked_at=NOW + timedelta(days=1),
+    )
+
+    assert report.valid is False
+    assert "predecessor_digest_mismatch:1" in report.failures
+    assert f"orphan_retraining_evidence:{orphan.sha256()}" in report.failures
+
+
+def test_history_verification_command_writes_failure_report(tmp_path) -> None:
+    predecessor, completion, renewed = renewed_chain()
+    broken = renewed.model_copy(update={"retraining_completion_sha256": "d" * 64})
+    qualifications_path = tmp_path / "qualifications.jsonl"
+    retraining_path = tmp_path / "retraining.jsonl"
+    report_path = tmp_path / "history-report.json"
+    qualifications_path.write_text(
+        "\n".join(item.model_dump_json() for item in (predecessor, broken)) + "\n",
+        encoding="utf-8",
+    )
+    retraining_path.write_text(completion.model_dump_json() + "\n", encoding="utf-8")
+
+    exit_code = history_main(
+        [
+            str(qualifications_path),
+            str(retraining_path),
+            str(report_path),
+            "--checked-at",
+            (NOW + timedelta(days=1)).isoformat(),
+        ]
+    )
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert exit_code == 2
+    assert payload["valid"] is False
+    assert "missing_retraining_evidence:1" in payload["failures"]

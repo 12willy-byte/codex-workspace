@@ -175,6 +175,23 @@ status `2`, and does not issue a new qualification.
 These digests detect accidental or unauthorized content changes in controlled storage; they are
 not digital signatures and do not establish the identity of an external signer.
 
+Verify the complete append-only history before admitting work under its latest qualification:
+
+```bash
+aquaguard-verify-qualification-history \
+  qualifications.jsonl retraining-completions.jsonl history-report.json \
+  --checked-at 2027-01-01T12:00:00+00:00
+```
+
+The history must start with one unlinked initial qualification. Every later record must reference
+the immediately preceding qualification and exactly one supplied retraining artifact. Reviewer,
+protocol, and annotation version remain constant within one chain; qualification times are unique
+and ascending; retraining occurs between the preceding qualification and renewal. Renewal validity
+periods cannot overlap. Duplicate artifacts, missing links, orphan retraining evidence, identity
+changes, invalid qualifications, and multiple active records are reported without mutating source
+files. Status `2` means the chain is invalid. An expired but otherwise complete chain is valid with
+no active qualification.
+
 ## Remaining release gates
 
 - approved real calibration material, qualification/admission thresholds, and renewal schedule;
