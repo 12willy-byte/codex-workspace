@@ -69,6 +69,8 @@ class GovernanceVerificationAuditRepository(Protocol):
 
     def verify_chain(self) -> GovernanceAuditChainReport: ...
 
+    def entry_sha256_at(self, sequence: int) -> str | None: ...
+
 
 class SQLiteGovernanceVerificationAuditRepository:
     """Append-only API with a hash chain; database administrators remain outside its trust model."""
@@ -146,6 +148,19 @@ class SQLiteGovernanceVerificationAuditRepository:
     def verify_chain(self) -> GovernanceAuditChainReport:
         with self._connect() as connection:
             return self._verify_rows(self._rows(connection))
+
+    def entry_sha256_at(self, sequence: int) -> str | None:
+        if sequence < 1:
+            raise ValueError("audit sequence must be positive")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT entry_sha256 FROM governance_signature_audits
+                WHERE sequence = ?
+                """,
+                (sequence,),
+            ).fetchone()
+        return None if row is None else row[0]
 
     @staticmethod
     def _verify_rows(rows: list[tuple]) -> GovernanceAuditChainReport:

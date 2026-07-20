@@ -235,9 +235,30 @@ aquaguard-verify-governance-audit \
 ```
 
 The internal chain detects payload changes, middle-row deletion/reordering, stored digest changes,
-and predecessor mismatches. It cannot detect replacing the whole database with an older valid copy
-or truncating its valid tail without an external checkpoint. Production must periodically anchor
-the reported chain head in a separately controlled immutable service or signed transparency log.
+and predecessor mismatches. It cannot by itself detect replacing the whole database with an older
+valid copy or truncating its valid tail.
+
+`GovernanceAuditCheckpointPublisher` creates a canonical, signable checkpoint containing the
+stream identity, checkpoint number, audit entry count, audit head, predecessor checkpoint digest,
+and anchoring time. It publishes through `GovernanceCheckpointStore`, whose production adapter
+must use separately controlled append-only storage and compare-and-swap semantics. The repository
+deliberately provides no local adapter that pretends to be an immutable external authority.
+
+After retrieving and authenticating a checkpoint from that external authority, verify the current
+database against it:
+
+```bash
+aquaguard-verify-governance-checkpoint \
+  governance-signatures.sqlite3 external-checkpoint.json checkpoint-report.json
+```
+
+Verification detects a database with fewer entries than the checkpoint and a different valid
+history at the anchored sequence. Publishing refuses a corrupt or empty audit, refuses a history
+that does not contain the latest external checkpoint, and links every later checkpoint to its
+predecessor. Concurrent external writers must be rejected by the store's expected-predecessor
+comparison. A checkpoint should itself be signed and independently retained; unsigned local
+checkpoint files do not establish an external trust anchor. Changes after the most recent
+checkpoint remain unanchored until the next successful publication.
 
 ## Remaining release gates
 
