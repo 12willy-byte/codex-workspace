@@ -1,19 +1,31 @@
 from aquaguard.world.fusion import MultiCameraFusion
 from aquaguard.world.models import CameraObservation, PoolGeometry
 from aquaguard.world.occupancy import PoolOccupancy
+from typing import Protocol
+
+from aquaguard.world.models import FusedTrack, RiskForecast
 from aquaguard.world.prediction import FutureRiskPredictor
 from aquaguard.world.safety import IndependentSafetySupervisor
 from aquaguard.world.temporal import TemporalTrackBuffer
 
 
+class RiskPredictor(Protocol):
+    def predict(self, history: tuple[FusedTrack, ...]) -> RiskForecast: ...
+
+
 class WorldModelPipeline:
-    def __init__(self, geometry: PoolGeometry | None = None):
+    def __init__(
+        self,
+        geometry: PoolGeometry | None = None,
+        *,
+        predictor: RiskPredictor | None = None,
+    ):
         self.geometry = geometry or PoolGeometry()
         self.geometry.validate()
         self.fusion = MultiCameraFusion()
         self.temporal = TemporalTrackBuffer()
         self.occupancy = PoolOccupancy(self.geometry)
-        self.predictor = FutureRiskPredictor()
+        self.predictor = predictor or FutureRiskPredictor()
         self.supervisor = IndependentSafetySupervisor()
 
     def process(self, observations: list[CameraObservation]) -> dict:

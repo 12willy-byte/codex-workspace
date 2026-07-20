@@ -21,7 +21,15 @@ class IndependentSafetySupervisor:
         severe_signal = track.head_submerged >= 0.8 and (
             track.body_vertical >= 0.65 or track.motion <= 0.1
         )
-        reliable = forecast.uncertainty <= 0.55 and track.confidence >= 0.45
+        model_approved = (
+            forecast.predictor_kind != "learned_temporal"
+            or forecast.assistive_alerting_eligible
+        )
+        reliable = (
+            forecast.uncertainty <= 0.55
+            and track.confidence >= 0.45
+            and model_approved
+        )
         high_risk = max(forecast.current_risk, forecast.future_risk) >= self.alarm_threshold
         self._high_risk_counts[track.track_id] = (
             self._high_risk_counts[track.track_id] + 1 if high_risk and reliable else 0
@@ -34,8 +42,11 @@ class IndependentSafetySupervisor:
                 track.track_id, "emergency", True, forecast.reasons + (guard_reason,)
             )
         if not reliable:
+            reliability_reason = (
+                "unvalidated_learned_model" if not model_approved else "high_uncertainty"
+            )
             return SafetyDecision(
-                track.track_id, "observe", False, forecast.reasons + ("high_uncertainty",)
+                track.track_id, "observe", False, forecast.reasons + (reliability_reason,)
             )
         if max(forecast.current_risk, forecast.future_risk) >= self.warning_threshold:
             return SafetyDecision(track.track_id, "warning", False, forecast.reasons)

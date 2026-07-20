@@ -80,6 +80,9 @@ class RiskForecast:
     time_to_critical_seconds: float | None
     uncertainty: float
     reasons: tuple[str, ...]
+    predictor_kind: str = "deterministic_baseline"
+    model_version: str | None = None
+    assistive_alerting_eligible: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
