@@ -192,6 +192,34 @@ changes, invalid qualifications, and multiple active records are reported withou
 files. Status `2` means the chain is invalid. An expired but otherwise complete chain is valid with
 no active qualification.
 
+## Governance artifact signatures
+
+Hash links detect content changes but do not authenticate a signer. Governance artifacts can be
+wrapped in a detached `GovernanceSignatureEnvelope`. The canonical signing payload is domain
+separated and binds artifact type and SHA-256, signer identity, exact key ID/version, algorithm,
+and timezone-aware signing time. Private keys are never fields in these models.
+
+Verify an envelope with an explicitly distributed trust store and revocation policy:
+
+```bash
+pip install -e '.[signing]'
+
+aquaguard-verify-governance-signature \
+  qualification.json signature-envelope.json trust-store.json signature-policy.json \
+  signature-report.json --checked-at 2027-01-01T12:00:00+00:00
+```
+
+The optional implementation verifies Ed25519 signatures. The core issuer accepts an external
+signing port so production private keys can remain in an HSM, KMS, or controlled offline signer.
+Key rotation uses an exact `(key_id, key_version)` lookup. The policy explicitly chooses whether
+signatures made before a later revocation remain acceptable. Signing after revocation, signing
+outside key validity, artifact changes, metadata changes, unknown keys, signer mismatch, future
+signatures, and invalid signatures all fail closed.
+
+The trust-store file is a root of trust, not self-authenticating input. Production deployment must
+distribute and protect it through a separate trusted channel. This repository contains no private
+keys, real public keys, certificates, organization identities, or claimed legal signatures.
+
 ## Remaining release gates
 
 - approved real calibration material, qualification/admission thresholds, and renewal schedule;

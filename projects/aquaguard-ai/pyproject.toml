@@ -19,10 +19,12 @@ aquaguard-admit-annotation-batch = "aquaguard.annotation_governance_cli:main"
 aquaguard-monitor-annotation-quality = "aquaguard.annotation_monitoring_cli:main"
 aquaguard-renew-reviewer-qualification = "aquaguard.annotation_renewal_cli:main"
 aquaguard-verify-qualification-history = "aquaguard.annotation_history_cli:main"
+aquaguard-verify-governance-signature = "aquaguard.governance_signing_cli:main"
 
 [project.optional-dependencies]
 dev = ["httpx>=0.28,<1", "pytest>=8.3,<9", "ruff>=0.9,<1"]
 vision = ["numpy>=2,<3", "opencv-python-headless>=4.10,<5", "ultralytics>=8.3,<9"]
+signing = ["cryptography>=44,<47"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
