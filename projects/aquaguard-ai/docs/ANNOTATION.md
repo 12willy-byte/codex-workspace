@@ -206,7 +206,8 @@ pip install -e '.[signing]'
 
 aquaguard-verify-governance-signature \
   qualification.json signature-envelope.json trust-store.json signature-policy.json \
-  signature-report.json --checked-at 2027-01-01T12:00:00+00:00
+  signature-report.json --audit-database governance-signatures.sqlite3 \
+  --checked-at 2027-01-01T12:00:00+00:00
 ```
 
 The optional implementation verifies Ed25519 signatures. The core issuer accepts an external
@@ -219,6 +220,24 @@ signatures, and invalid signatures all fail closed.
 The trust-store file is a root of trust, not self-authenticating input. Production deployment must
 distribute and protect it through a separate trusted channel. This repository contains no private
 keys, real public keys, certificates, organization identities, or claimed legal signatures.
+
+The verification command requires explicit, existing trust-store and policy files and records
+both successful and failed verifications in SQLite. Each audit entry binds the artifact, envelope,
+trust-store and policy digests, full result, recording time, and previous entry digest. Writes use
+a serialized transaction and revalidate the chain before append. A corrupt chain blocks normal
+reads and future appends.
+
+Audit integrity can be checked independently:
+
+```bash
+aquaguard-verify-governance-audit \
+  governance-signatures.sqlite3 governance-audit-report.json
+```
+
+The internal chain detects payload changes, middle-row deletion/reordering, stored digest changes,
+and predecessor mismatches. It cannot detect replacing the whole database with an older valid copy
+or truncating its valid tail without an external checkpoint. Production must periodically anchor
+the reported chain head in a separately controlled immutable service or signed transparency log.
 
 ## Remaining release gates
 

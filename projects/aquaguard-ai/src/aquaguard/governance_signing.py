@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -68,6 +69,12 @@ class GovernanceSignatureEnvelope(BaseModel):
             "signed_at": self.signed_at.isoformat(),
         }
         return (json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n").encode()
+
+    def canonical_bytes(self) -> bytes:
+        return _canonical_bytes(self.model_dump(mode="json"))
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
 class TrustedGovernancePublicKey(BaseModel):
@@ -142,9 +149,29 @@ class GovernanceTrustStore(BaseModel):
             None,
         )
 
+    @classmethod
+    def load(cls, path: Path) -> GovernanceTrustStore:
+        return cls.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def canonical_bytes(self) -> bytes:
+        return _canonical_bytes(self.model_dump(mode="json"))
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
 
 class GovernanceSignaturePolicy(BaseModel):
     accept_pre_revocation_signatures: bool
+
+    @classmethod
+    def load(cls, path: Path) -> GovernanceSignaturePolicy:
+        return cls.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def canonical_bytes(self) -> bytes:
+        return _canonical_bytes(self.model_dump(mode="json"))
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
 class DetachedSignatureVerifier(Protocol):
@@ -284,3 +311,7 @@ class Ed25519SignatureVerifier:
         except (InvalidSignature, ValueError):
             return False
         return True
+
+
+def _canonical_bytes(payload: dict) -> bytes:
+    return (json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n").encode()

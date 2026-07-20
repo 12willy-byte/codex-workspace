@@ -201,6 +201,8 @@ def test_signature_verification_command_writes_failure_report(tmp_path) -> None:
             str(trust_store_path),
             str(policy_path),
             str(report_path),
+            "--audit-database",
+            str(tmp_path / "audit.sqlite3"),
             "--checked-at",
             (NOW + timedelta(days=1)).isoformat(),
         ],
