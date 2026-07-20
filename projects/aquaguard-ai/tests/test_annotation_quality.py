@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -223,6 +224,49 @@ def test_reviewer_qualification_command_writes_report_and_signals_failure(tmp_pa
     assert exit_code == 2
     assert report["qualified"] is False
     assert "minimum_dangerous_recall" in report["failed_requirements"]
+
+
+def test_reviewer_qualification_command_can_issue_expiring_record(tmp_path) -> None:
+    source = calibration_set()
+    calibration_path = tmp_path / "calibration.json"
+    submission_path = tmp_path / "submission.json"
+    policy_path = tmp_path / "policy.json"
+    report_path = tmp_path / "qualification.json"
+    record_path = tmp_path / "record.json"
+    source.save(calibration_path)
+    passing = submission(
+        source,
+        (
+            RiskJudgment.DANGEROUS,
+            RiskJudgment.DANGEROUS,
+            RiskJudgment.SAFE,
+            RiskJudgment.SAFE,
+        ),
+    )
+    submission_path.write_text(passing.model_dump_json(), encoding="utf-8")
+    policy_path.write_text(policy().model_dump_json(), encoding="utf-8")
+    qualified_at = datetime(2026, 7, 19, tzinfo=timezone.utc)
+
+    exit_code = qualify_main(
+        [
+            str(calibration_path),
+            str(submission_path),
+            str(policy_path),
+            str(report_path),
+            "--record",
+            str(record_path),
+            "--qualified-at",
+            qualified_at.isoformat(),
+            "--expires-at",
+            (qualified_at + timedelta(days=30)).isoformat(),
+        ]
+    )
+
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert record["reviewer_id"] == "reviewer-a"
+    assert record["qualified"] is True
+    assert record["qualification_policy_sha256"] == policy().sha256()
 
 
 def test_annotation_agreement_command_writes_kappa_report(tmp_path) -> None:

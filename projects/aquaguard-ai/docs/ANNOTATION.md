@@ -82,11 +82,19 @@ this repository. The report separates:
 
 ```bash
 aquaguard-qualify-reviewer \
-  calibration-set.json reviewer-submission.json qualification-policy.json report.json
+  calibration-set.json reviewer-submission.json qualification-policy.json report.json \
+  --record reviewer-qualification.json \
+  --qualified-at 2026-07-19T12:00:00+00:00 \
+  --expires-at 2026-10-19T12:00:00+00:00
 ```
 
 The command exits with status `2` when the reviewer does not pass, while still writing the failure
 report and every failed requirement. Only pseudonymous reviewer IDs belong in these artifacts.
+When all lifecycle options are supplied and the evaluation passes, the command also issues an
+immutable qualification record. The record binds the exact protocol, calibration set, policy,
+and recomputed report digests. Both timestamps must include a timezone and the expiry boundary is
+exclusive. Project owners choose the validity period; this repository does not claim a universal
+retraining interval.
 
 ## Agreement monitoring
 
@@ -100,9 +108,27 @@ The report includes raw agreement, expected chance agreement, Cohen's kappa, dis
 where either reviewer selected `uncertain`. Cohen's kappa is rejected when the batch does not use
 the same two reviewers on every item; it must not be misreported for rotating reviewer pools.
 
+## Annotation batch admission
+
+A reviewed batch is not eligible for downstream resolution merely because two files exist. Before
+acceptance, supply exactly one qualification record for each of the batch's two reviewers and an
+explicit admission policy:
+
+```bash
+aquaguard-admit-annotation-batch \
+  reviews.jsonl qualifications.jsonl batch-admission-policy.json admission-report.json \
+  --checked-at 2026-07-20T12:00:00+00:00
+```
+
+The command exits with status `2` and still writes a denial report when either qualification is
+missing, failed, not yet valid, expired, bound to another protocol, duplicated, or assigned to a
+different reviewer set. It also denies batches below the project's explicit minimum item count,
+observed agreement, or Cohen's kappa, and above its maximum uncertainty fraction. An undefined
+kappa fails closed. No admission thresholds are embedded as claimed industry standards.
+
 ## Remaining release gates
 
-- reviewer qualification and agreement statistics;
+- approved real calibration material, qualification/admission thresholds, and renewal schedule;
 - documented consent, retention, access, and deletion controls;
 - scenario coverage and demographic/operational bias review;
 - frozen recording hashes, calibration, model, configuration, and annotation versions;

@@ -1,5 +1,6 @@
 import argparse
 import json
+from datetime import datetime
 from pathlib import Path
 
 from aquaguard.vision.annotation import AnnotationReview
@@ -10,6 +11,7 @@ from aquaguard.vision.annotation_quality import (
     ReviewerQualificationEvaluator,
     ReviewerQualificationPolicy,
 )
+from aquaguard.vision.annotation_governance import ReviewerQualificationIssuer
 
 
 def qualify_main(argv: list[str] | None = None) -> int:
@@ -21,7 +23,15 @@ def qualify_main(argv: list[str] | None = None) -> int:
     parser.add_argument("submission", type=Path)
     parser.add_argument("policy", type=Path)
     parser.add_argument("report", type=Path)
+    parser.add_argument("--record", type=Path)
+    parser.add_argument("--qualified-at", type=datetime.fromisoformat)
+    parser.add_argument("--expires-at", type=datetime.fromisoformat)
     args = parser.parse_args(argv)
+    lifecycle_values = (args.record, args.qualified_at, args.expires_at)
+    if any(value is not None for value in lifecycle_values) and not all(
+        value is not None for value in lifecycle_values
+    ):
+        parser.error("--record, --qualified-at, and --expires-at must be supplied together")
     calibration_set = ReviewerCalibrationSet.load(args.calibration_set)
     submission = ReviewerCalibrationSubmission.model_validate_json(
         args.submission.read_text(encoding="utf-8")
@@ -31,6 +41,16 @@ def qualify_main(argv: list[str] | None = None) -> int:
     )
     report = ReviewerQualificationEvaluator().evaluate(calibration_set, submission, policy)
     _write_json(args.report, report.model_dump(mode="json"))
+    if args.record is not None and report.qualified:
+        record = ReviewerQualificationIssuer().issue(
+            calibration_set,
+            submission,
+            policy,
+            report,
+            qualified_at=args.qualified_at,
+            expires_at=args.expires_at,
+        )
+        _write_json(args.record, record.model_dump(mode="json"))
     return 0 if report.qualified else 2
 
 

@@ -95,6 +95,15 @@ class ReviewerQualificationPolicy(BaseModel):
     minimum_safe_specificity: float = Field(ge=0, le=1)
     maximum_uncertain_fraction: float = Field(ge=0, le=1)
 
+    def canonical_bytes(self) -> bytes:
+        serialized = json.dumps(
+            self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True
+        )
+        return (serialized + "\n").encode()
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
 
 class ReviewerQualificationReport(BaseModel):
     reviewer_id: str
@@ -110,6 +119,15 @@ class ReviewerQualificationReport(BaseModel):
     uncertain_fraction: float
     qualified: bool
     failed_requirements: tuple[str, ...]
+
+    def canonical_bytes(self) -> bytes:
+        serialized = json.dumps(
+            self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True
+        )
+        return (serialized + "\n").encode()
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
 class ReviewerQualificationEvaluator:
