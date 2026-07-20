@@ -197,6 +197,20 @@ def test_cohen_agreement_requires_same_two_reviewers_on_every_item() -> None:
         CohenAgreementReporter().evaluate(reviews)
 
 
+def test_agreement_report_rejects_internally_inconsistent_metrics() -> None:
+    report = CohenAgreementReporter().evaluate(
+        [
+            annotation_review("reviewer-a", RiskJudgment.SAFE, 0),
+            annotation_review("reviewer-b", RiskJudgment.SAFE, 0),
+            annotation_review("reviewer-a", RiskJudgment.DANGEROUS, 1),
+            annotation_review("reviewer-b", RiskJudgment.DANGEROUS, 1),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="observed agreement"):
+        type(report)(**{**report.model_dump(), "observed_agreement": 0.5})
+
+
 def test_reviewer_qualification_command_writes_report_and_signals_failure(tmp_path) -> None:
     source = calibration_set()
     calibration_path = tmp_path / "calibration.json"

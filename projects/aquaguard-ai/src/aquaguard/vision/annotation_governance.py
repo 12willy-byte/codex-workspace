@@ -115,6 +115,14 @@ class AnnotationBatchAdmissionReport(BaseModel):
     denial_reasons: tuple[str, ...]
     agreement: AnnotationAgreementReport
 
+    @model_validator(mode="after")
+    def require_consistent_decision(self) -> AnnotationBatchAdmissionReport:
+        if self.reviewer_ids != self.agreement.reviewer_ids:
+            raise ValueError("admission and agreement reviewer ids must match")
+        if self.admitted == bool(self.denial_reasons):
+            raise ValueError("admitted batches require no denials; denied batches require reasons")
+        return self
+
 
 class AnnotationBatchAdmissionService:
     """Fail closed unless both reviewers are current and batch quality passes."""

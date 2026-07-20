@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from aquaguard.vision.annotation import AnnotationReview, RiskJudgment
 
@@ -222,13 +222,34 @@ class ReviewerQualificationEvaluator:
 
 class AnnotationAgreementReport(BaseModel):
     reviewer_ids: tuple[str, str]
-    items: int
-    agreed_items: int
-    disputed_items: int
-    uncertain_items: int
-    observed_agreement: float
-    expected_agreement: float
-    cohen_kappa: float | None
+    items: int = Field(ge=1)
+    agreed_items: int = Field(ge=0)
+    disputed_items: int = Field(ge=0)
+    uncertain_items: int = Field(ge=0)
+    observed_agreement: float = Field(ge=0, le=1)
+    expected_agreement: float = Field(ge=0, le=1)
+    cohen_kappa: float | None = Field(default=None, ge=-1, le=1)
+
+    @model_validator(mode="after")
+    def require_consistent_counts_and_metrics(self) -> AnnotationAgreementReport:
+        if len(set(self.reviewer_ids)) != 2:
+            raise ValueError("agreement report requires two distinct reviewers")
+        if self.agreed_items + self.disputed_items != self.items:
+            raise ValueError("agreement counts must sum to total items")
+        if self.uncertain_items > self.items:
+            raise ValueError("uncertain item count cannot exceed total items")
+        if abs(self.observed_agreement - self.agreed_items / self.items) > 1e-12:
+            raise ValueError("observed agreement must match item counts")
+        if self.expected_agreement == 1:
+            if self.observed_agreement != 1 or self.cohen_kappa is not None:
+                raise ValueError("Cohen's kappa must be unavailable when chance agreement is one")
+        else:
+            expected_kappa = (
+                self.observed_agreement - self.expected_agreement
+            ) / (1 - self.expected_agreement)
+            if self.cohen_kappa is None or abs(self.cohen_kappa - expected_kappa) > 1e-12:
+                raise ValueError("Cohen's kappa must match observed and expected agreement")
+        return self
 
 
 class CohenAgreementReporter:

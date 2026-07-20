@@ -126,6 +126,28 @@ different reviewer set. It also denies batches below the project's explicit mini
 observed agreement, or Cohen's kappa, and above its maximum uncertainty fraction. An undefined
 kappa fails closed. No admission thresholds are embedded as claimed industry standards.
 
+## Continuous quality monitoring
+
+Archive each admission report as an `AnnotationBatchQualitySnapshot` with a unique batch ID and
+timezone-aware completion time. Then evaluate a rolling window:
+
+```bash
+aquaguard-monitor-annotation-quality \
+  batch-quality-snapshots.jsonl continuous-quality-policy.json trend-report.json \
+  --evaluated-at 2026-08-01T12:00:00+00:00
+```
+
+The report computes item-weighted observed agreement, Cohen's kappa, uncertainty fraction,
+changes from the preceding complete window, and the current run of denied batches. Its policy
+explicitly controls history/window size, metric limits, denied-batch tolerance, and how many
+simultaneous alerts recommend retraining. Missing history produces an
+`insufficient_batch_history` alert without pretending a trend exists; unavailable kappa fails its
+quality check. Exit status `2` means `retraining_required`, but the command never revokes a
+reviewer or launches training automatically. Those remain audited human decisions.
+
+All archived agreement reports are validated for consistent item counts, reviewer identities,
+observed agreement, expected agreement, and kappa before monitoring.
+
 ## Remaining release gates
 
 - approved real calibration material, qualification/admission thresholds, and renewal schedule;

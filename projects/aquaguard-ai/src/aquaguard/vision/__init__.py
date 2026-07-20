@@ -29,6 +29,12 @@ from aquaguard.vision.annotation_governance import (
     ReviewerQualificationIssuer,
     ReviewerQualificationRecord,
 )
+from aquaguard.vision.annotation_monitoring import (
+    AnnotationBatchQualitySnapshot,
+    AnnotationQualityTrendReport,
+    ContinuousAnnotationQualityMonitor,
+    ContinuousAnnotationQualityPolicy,
+)
 from aquaguard.vision.benchmark import (
     BinaryRiskBenchmark,
     FrameRiskLabels,
@@ -64,6 +70,8 @@ __all__ = [
     "AnnotationBatchAdmissionPolicy",
     "AnnotationBatchAdmissionReport",
     "AnnotationBatchAdmissionService",
+    "AnnotationBatchQualitySnapshot",
+    "AnnotationQualityTrendReport",
     "AnnotationProtocol",
     "AnnotationReview",
     "FrameRiskLabels",
@@ -72,6 +80,8 @@ __all__ = [
     "CalibrationGoldItem",
     "CalibrationResponse",
     "CohenAgreementReporter",
+    "ContinuousAnnotationQualityMonitor",
+    "ContinuousAnnotationQualityPolicy",
     "EvaluationProvenance",
     "DatasetRecording",
     "DatasetSplit",
