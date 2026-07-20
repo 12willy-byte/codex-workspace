@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from typing import Literal
 
@@ -36,6 +38,12 @@ class ReviewerQualificationRecord(BaseModel):
     calibration_set_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     qualification_policy_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     qualification_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    predecessor_qualification_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    retraining_completion_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     qualified: bool
     qualified_at: datetime
     expires_at: datetime
@@ -57,11 +65,28 @@ class ReviewerQualificationRecord(BaseModel):
     def require_positive_validity_window(self) -> ReviewerQualificationRecord:
         if self.expires_at <= self.qualified_at:
             raise ValueError("qualification expiry must be after qualification time")
+        renewal_links = (
+            self.predecessor_qualification_sha256,
+            self.retraining_completion_sha256,
+        )
+        if any(link is not None for link in renewal_links) and not all(
+            link is not None for link in renewal_links
+        ):
+            raise ValueError("renewed qualification requires predecessor and retraining links")
         return self
 
     def is_active_at(self, checked_at: datetime) -> bool:
         checked_at = _require_aware(checked_at)
         return self.qualified and self.qualified_at <= checked_at < self.expires_at
+
+    def canonical_bytes(self) -> bytes:
+        serialized = json.dumps(
+            self.model_dump(mode="json"), ensure_ascii=False, sort_keys=True
+        )
+        return (serialized + "\n").encode()
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
 class ReviewerQualificationIssuer:

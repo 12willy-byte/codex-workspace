@@ -17,6 +17,7 @@ aquaguard-qualify-reviewer = "aquaguard.annotation_quality_cli:qualify_main"
 aquaguard-annotation-agreement = "aquaguard.annotation_quality_cli:agreement_main"
 aquaguard-admit-annotation-batch = "aquaguard.annotation_governance_cli:main"
 aquaguard-monitor-annotation-quality = "aquaguard.annotation_monitoring_cli:main"
+aquaguard-renew-reviewer-qualification = "aquaguard.annotation_renewal_cli:main"
 
 [project.optional-dependencies]
 dev = ["httpx>=0.28,<1", "pytest>=8.3,<9", "ruff>=0.9,<1"]

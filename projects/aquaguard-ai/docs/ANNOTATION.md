@@ -148,6 +148,33 @@ reviewer or launches training automatically. Those remain audited human decision
 All archived agreement reports are validated for consistent item counts, reviewer identities,
 observed agreement, expected agreement, and kappa before monitoring.
 
+## Retraining and qualification renewal
+
+Retraining completion is a separate immutable artifact. It binds a pseudonymous reviewer and
+independent assessor to the exact annotation protocol, training-material digest, evidence digest,
+and timezone-aware completion time. Completion alone never renews qualification.
+
+Renewal requires the previous qualification, retraining evidence, a complete new calibration
+submission, qualification policy, and explicit renewal policy:
+
+```bash
+aquaguard-renew-reviewer-qualification \
+  previous-qualification.json retraining-completion.json \
+  calibration-set.json reviewer-submission.json qualification-policy.json renewal-policy.json \
+  renewal-report.json renewed-qualification.json \
+  --renewed-at 2026-10-20T12:00:00+00:00 \
+  --expires-at 2027-01-20T12:00:00+00:00
+```
+
+The new record links the SHA-256 of both its predecessor and retraining completion, while the old
+record remains unchanged. Reviewer and protocol identities must match throughout; retraining must
+occur after the previous qualification and before renewal. The renewal policy explicitly decides
+whether the same calibration set may be reused. A failed recalibration writes its report, returns
+status `2`, and does not issue a new qualification.
+
+These digests detect accidental or unauthorized content changes in controlled storage; they are
+not digital signatures and do not establish the identity of an external signer.
+
 ## Remaining release gates
 
 - approved real calibration material, qualification/admission thresholds, and renewal schedule;

@@ -22,6 +22,11 @@ from aquaguard.vision.annotation_quality import (
     ReviewerQualificationPolicy,
     ReviewerQualificationReport,
 )
+from aquaguard.vision.annotation_renewal import (
+    QualificationRenewalPolicy,
+    ReviewerQualificationRenewalIssuer,
+    ReviewerRetrainingCompletion,
+)
 from aquaguard.vision.annotation_governance import (
     AnnotationBatchAdmissionPolicy,
     AnnotationBatchAdmissionReport,
@@ -107,9 +112,12 @@ __all__ = [
     "ReviewerCalibrationSubmission",
     "ReviewerQualificationEvaluator",
     "ReviewerQualificationPolicy",
+    "ReviewerQualificationRenewalIssuer",
     "ReviewerQualificationReport",
     "ReviewerQualificationIssuer",
     "ReviewerQualificationRecord",
+    "ReviewerRetrainingCompletion",
+    "QualificationRenewalPolicy",
     "ScriptedFrameAnalyzer",
     "TrackRiskLabel",
     "UltralyticsTrackAnalyzer",
