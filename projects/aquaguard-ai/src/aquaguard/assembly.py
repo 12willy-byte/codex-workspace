@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import Literal, Protocol
 
@@ -7,6 +9,7 @@ from aquaguard.evidence.recorder import EvidenceRecorder
 from aquaguard.runtime import FrameAnalyzer, VideoRuntimeManager, VideoWorldRuntime, WorldFrameProcessor
 from aquaguard.video.source import CaptureFactory, OpenCVFrameSource
 from aquaguard.vision.adapter import CalibratedObservationAdapter
+from aquaguard.vision.camera_calibration import CameraCalibrationArtifact
 from aquaguard.vision.calibration import HomographyProjector
 from aquaguard.vision.regions import PolygonRegion
 from aquaguard.vision.ultralytics import (
@@ -28,6 +31,24 @@ class CameraRuntimeConfig(BaseModel):
     keypoint_confidence: float = Field(default=0.3, ge=0, le=1)
     water_roi: tuple[tuple[float, float], ...] | None = None
     track_ttl_seconds: float = Field(default=30, gt=0)
+    calibration_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @classmethod
+    def from_calibration(
+        cls,
+        calibration: CameraCalibrationArtifact,
+        *,
+        source: str,
+        **options: object,
+    ) -> CameraRuntimeConfig:
+        return cls(
+            camera_id=calibration.camera_id,
+            source=source,
+            homography=calibration.homography,
+            water_roi=calibration.water_roi,
+            calibration_sha256=calibration.sha256(),
+            **options,
+        )
 
 
 class FrameAnalyzerFactory(Protocol):

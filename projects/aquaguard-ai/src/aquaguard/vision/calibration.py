@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 
@@ -13,6 +14,15 @@ class HomographyProjector:
             raise ValueError("camera_id is required")
         if len(self.matrix) != 9:
             raise ValueError("Homography matrix must contain nine values")
+        if any(not math.isfinite(value) for value in self.matrix):
+            raise ValueError("Homography matrix values must be finite")
+        scale = max(abs(value) for value in self.matrix)
+        if scale == 0:
+            raise ValueError("Homography matrix must be invertible")
+        a, b, c, d, e, f, g, h, i = (value / scale for value in self.matrix)
+        determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+        if abs(determinant) < 1e-12:
+            raise ValueError("Homography matrix must be invertible")
 
     def project(self, image_x: float, image_y: float) -> tuple[float, float]:
         h = self.matrix

@@ -39,6 +39,19 @@ def test_homography_projects_pixels_to_pool_coordinates() -> None:
     assert projector("cam-a").project(50, 40) == pytest.approx((5, 4))
 
 
+def test_homography_rejects_singular_or_non_finite_matrix() -> None:
+    with pytest.raises(ValueError, match="invertible"):
+        HomographyProjector("cam-a", (1, 0, 0, 0, 0, 0, 0, 0, 1))
+    with pytest.raises(ValueError, match="finite"):
+        HomographyProjector("cam-a", (1, 0, 0, 0, 1, 0, 0, 0, float("nan")))
+
+
+def test_homography_validation_is_scale_invariant() -> None:
+    scaled = HomographyProjector("cam-a", tuple(value * 1e-6 for value in projector("x").matrix))
+
+    assert scaled.project(50, 40) == pytest.approx((5, 4))
+
+
 def test_two_calibrated_cameras_fuse_only_with_explicit_global_identity() -> None:
     adapter = CalibratedObservationAdapter(
         {"cam-a": projector("cam-a"), "cam-b": projector("cam-b")}

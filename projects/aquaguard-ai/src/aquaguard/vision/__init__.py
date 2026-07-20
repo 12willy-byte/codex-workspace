@@ -50,6 +50,12 @@ from aquaguard.vision.benchmark import (
     TrackRiskLabel,
 )
 from aquaguard.vision.calibration import HomographyProjector
+from aquaguard.vision.camera_calibration import (
+    CalibrationCorrespondence,
+    CameraCalibrationArtifact,
+    CameraCalibrationVerificationReport,
+    CameraCalibrationVerifier,
+)
 from aquaguard.vision.evaluation import (
     CameraCalibrationRecord,
     EvaluationProvenance,
@@ -84,6 +90,10 @@ __all__ = [
     "FrameRiskLabels",
     "CalibratedObservationAdapter",
     "CameraCalibrationRecord",
+    "CameraCalibrationArtifact",
+    "CameraCalibrationVerificationReport",
+    "CameraCalibrationVerifier",
+    "CalibrationCorrespondence",
     "CalibrationGoldItem",
     "CalibrationResponse",
     "CohenAgreementReporter",
