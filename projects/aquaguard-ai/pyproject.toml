@@ -24,6 +24,7 @@ aquaguard-verify-governance-audit = "aquaguard.governance_audit_cli:main"
 aquaguard-verify-governance-checkpoint = "aquaguard.governance_checkpoint_cli:main"
 aquaguard-verify-camera-calibration = "aquaguard.camera_calibration_cli:main"
 aquaguard-verify-temporal-model = "aquaguard.temporal_model_cli:main"
+aquaguard-build-training-dataset = "aquaguard.training_dataset_cli:main"
 
 [project.optional-dependencies]
 dev = ["httpx>=0.28,<1", "pytest>=8.3,<9", "ruff>=0.9,<1"]

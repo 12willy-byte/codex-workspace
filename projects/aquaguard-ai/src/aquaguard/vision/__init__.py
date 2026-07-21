@@ -75,9 +75,19 @@ from aquaguard.vision.regions import PolygonRegion
 from aquaguard.vision.replay import ObservationReplay
 from aquaguard.vision.scripted import ScriptedFrameAnalyzer
 from aquaguard.vision.ultralytics import UltralyticsPoseTrackAnalyzer, UltralyticsTrackAnalyzer
+from aquaguard.vision.training_dataset import (
+    BehaviorEpisode,
+    ClipPlanningPolicy,
+    TemporalTrainingDatasetBuilder,
+    TemporalTrainingDatasetManifest,
+    TrainingClipRecord,
+    TrainingRecordingProvenance,
+    TrainingRecordingSource,
+)
 
 __all__ = [
     "BinaryRiskBenchmark",
+    "BehaviorEpisode",
     "AnnotationAdjudication",
     "AnnotationAgreementReport",
     "AnnotationBatchAdmissionPolicy",
@@ -93,6 +103,7 @@ __all__ = [
     "CameraCalibrationArtifact",
     "CameraCalibrationVerificationReport",
     "CameraCalibrationVerifier",
+    "ClipPlanningPolicy",
     "CalibrationCorrespondence",
     "CalibrationGoldItem",
     "CalibrationResponse",
@@ -134,6 +145,11 @@ __all__ = [
     "QualificationHistoryVerifier",
     "ScriptedFrameAnalyzer",
     "TrackRiskLabel",
+    "TemporalTrainingDatasetBuilder",
+    "TemporalTrainingDatasetManifest",
+    "TrainingClipRecord",
+    "TrainingRecordingProvenance",
+    "TrainingRecordingSource",
     "UltralyticsTrackAnalyzer",
     "UltralyticsPoseTrackAnalyzer",
     "VenueGroupedSplitter",
